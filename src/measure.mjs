@@ -25,7 +25,7 @@ export const findChrome = () => {
 };
 
 const launchChrome = async () => {
-  const userDataDir = mkdtempSync(join(tmpdir(), "real-site-size-"));
+  const userDataDir = mkdtempSync(join(tmpdir(), "true-site-size-"));
   const child = spawn(
     findChrome(),
     [

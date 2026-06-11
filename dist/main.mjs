@@ -31603,7 +31603,7 @@ import { existsSync as existsSync3, rmSync as rmSync2 } from "node:fs";
 import { join as join3, resolve } from "node:path";
 
 // src/comment.mjs
-var marker = "<!-- real-site-size -->";
+var marker = "<!-- true-site-size -->";
 var formatBytes = (n) => {
   if (n == null) return "\u2014";
   if (n < 1024) return `${n} B`;
@@ -31698,7 +31698,7 @@ var findChrome = () => {
   return found;
 };
 var launchChrome = async () => {
-  const userDataDir = mkdtempSync(join(tmpdir(), "real-site-size-"));
+  const userDataDir = mkdtempSync(join(tmpdir(), "true-site-size-"));
   const child = spawn(
     findChrome(),
     [
@@ -31937,12 +31937,14 @@ var serve = (dir, compression) => new Promise((resolve2) => {
 });
 
 // src/main.mjs
-var input = (name, fallback) => {
+var input = (name, fallback, { allowEmpty = false } = {}) => {
   const v = process.env[`INPUT_${name.toUpperCase().replaceAll("-", "_")}`];
-  return v === void 0 || v === "" ? fallback : v;
+  if (v === void 0) return fallback;
+  if (v === "" && !allowEmpty) return fallback;
+  return v;
 };
 var run = (cmd, cwd) => {
-  console.log(`[real-site-size] $ ${cmd} (in ${cwd})`);
+  console.log(`[true-site-size] $ ${cmd} (in ${cwd})`);
   execSync(cmd, { cwd, stdio: "inherit" });
 };
 var buildAndMeasure = async (checkoutDir, config) => {
@@ -31970,8 +31972,8 @@ var main = async () => {
       url: s.url,
       mark: s.mark
     })),
-    installCommand: input("install-command", ""),
-    buildCommand: input("build-command", "npm run build"),
+    installCommand: input("install-command", "", { allowEmpty: true }),
+    buildCommand: input("build-command", "npm run build", { allowEmpty: true }),
     serveDir: input("serve-dir", "dist"),
     compression: input("compression", "gzip"),
     runs: Number(input("runs", "3")),
@@ -31985,7 +31987,7 @@ var main = async () => {
     throw new Error("no scenarios configured - set the `scenarios` input");
   }
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
-  console.log("[real-site-size] measuring head...");
+  console.log("[true-site-size] measuring head...");
   const head = await buildAndMeasure(workspace, config);
   console.log(JSON.stringify(head, null, 2));
   const eventPath = process.env.GITHUB_EVENT_PATH;
@@ -31996,8 +31998,8 @@ var main = async () => {
   let baseLabel = "\u2014";
   if (compareRef) {
     baseLabel = `\`${compareRef}\``;
-    console.log(`[real-site-size] measuring base (${compareRef})...`);
-    const baseDir = join3(workspace, ".real-site-size-base");
+    console.log(`[true-site-size] measuring base (${compareRef})...`);
+    const baseDir = join3(workspace, ".true-site-size-base");
     rmSync2(baseDir, { recursive: true, force: true });
     run(`git fetch --no-tags --depth=1 origin ${compareRef}`, workspace);
     run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
@@ -32006,7 +32008,7 @@ var main = async () => {
       console.log(JSON.stringify(base, null, 2));
     } catch (e) {
       console.warn(
-        `[real-site-size] base measurement failed (reporting head only): ${e.message}`
+        `[true-site-size] base measurement failed (reporting head only): ${e.message}`
       );
     } finally {
       run(`git worktree remove --force ${baseDir}`, workspace);
@@ -32022,7 +32024,7 @@ var main = async () => {
       issueNumber,
       apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com"
     });
-    console.log("[real-site-size] comment posted");
+    console.log("[true-site-size] comment posted");
   }
   const summaryPath = process.env.GITHUB_STEP_SUMMARY;
   if (summaryPath) {

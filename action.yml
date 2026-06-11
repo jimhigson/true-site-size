@@ -1,4 +1,4 @@
-name: real-site-size
+name: true-site-size
 description: >
   Measures the real network bytes a browser transfers, from cold cache until
   your app signals readiness with a performance.mark, and comments the change

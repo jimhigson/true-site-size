@@ -1,5 +1,5 @@
 {
-  "name": "real-site-size",
+  "name": "true-site-size",
   "version": "0.1.0",
   "description": "GitHub Action measuring real network bytes from cold load until your app signals it is ready",
   "type": "module",

@@ -1,11 +1,11 @@
-# real-site-size
+# true-site-size
 
 A GitHub Action that measures **what your site really costs to load**: the
 network bytes a browser transfers, from a cold cache, until your app says it
 is ready — then comments the change on every pull request.
 
 File-size diffing (eg compressed-size actions) can tell you a chunk got
-bigger, but not whether anyone downloads it eagerly. real-site-size loads your
+bigger, but not whether anyone downloads it eagerly. true-site-size loads your
 built site in headless Chrome and counts wire bytes until your own
 `performance.mark(...)` fires and the network settles, so it captures:
 
@@ -29,7 +29,7 @@ built site in headless Chrome and counts wire bytes until your own
    incremental bytes, and the rows sum to the real user journey:
 
    ```yaml
-   - uses: jimhigson/real-site-size@main
+   - uses: jimhigson/true-site-size@main
      with:
        install-command: pnpm install --frozen-lockfile
        build-command: pnpm build

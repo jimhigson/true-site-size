@@ -6,14 +6,20 @@ import { formatComment, postComment } from "./comment.mjs";
 import { measure } from "./measure.mjs";
 import { serve } from "./serve.mjs";
 
-/** read an action input (the INPUT_* convention used by github actions) */
-const input = (name, fallback) => {
+/**
+ * read an action input (the INPUT_* convention used by github actions).
+ * An empty string counts as explicitly set when allowEmpty is given - eg
+ * build-command "" means "skip the build", not "use the default"
+ */
+const input = (name, fallback, { allowEmpty = false } = {}) => {
   const v = process.env[`INPUT_${name.toUpperCase().replaceAll("-", "_")}`];
-  return v === undefined || v === "" ? fallback : v;
+  if (v === undefined) return fallback;
+  if (v === "" && !allowEmpty) return fallback;
+  return v;
 };
 
 const run = (cmd, cwd) => {
-  console.log(`[real-site-size] $ ${cmd} (in ${cwd})`);
+  console.log(`[true-site-size] $ ${cmd} (in ${cwd})`);
   execSync(cmd, { cwd, stdio: "inherit" });
 };
 
@@ -44,8 +50,8 @@ const main = async () => {
       url: s.url,
       mark: s.mark,
     })),
-    installCommand: input("install-command", ""),
-    buildCommand: input("build-command", "npm run build"),
+    installCommand: input("install-command", "", { allowEmpty: true }),
+    buildCommand: input("build-command", "npm run build", { allowEmpty: true }),
     serveDir: input("serve-dir", "dist"),
     compression: input("compression", "gzip"),
     runs: Number(input("runs", "3")),
@@ -61,7 +67,7 @@ const main = async () => {
 
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
 
-  console.log("[real-site-size] measuring head...");
+  console.log("[true-site-size] measuring head...");
   const head = await buildAndMeasure(workspace, config);
   console.log(JSON.stringify(head, null, 2));
 
@@ -80,8 +86,8 @@ const main = async () => {
   let baseLabel = "—";
   if (compareRef) {
     baseLabel = `\`${compareRef}\``;
-    console.log(`[real-site-size] measuring base (${compareRef})...`);
-    const baseDir = join(workspace, ".real-site-size-base");
+    console.log(`[true-site-size] measuring base (${compareRef})...`);
+    const baseDir = join(workspace, ".true-site-size-base");
     rmSync(baseDir, { recursive: true, force: true });
     run(`git fetch --no-tags --depth=1 origin ${compareRef}`, workspace);
     run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
@@ -90,7 +96,7 @@ const main = async () => {
       console.log(JSON.stringify(base, null, 2));
     } catch (e) {
       console.warn(
-        `[real-site-size] base measurement failed (reporting head only): ${e.message}`,
+        `[true-site-size] base measurement failed (reporting head only): ${e.message}`,
       );
     } finally {
       run(`git worktree remove --force ${baseDir}`, workspace);
@@ -108,7 +114,7 @@ const main = async () => {
       issueNumber,
       apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com",
     });
-    console.log("[real-site-size] comment posted");
+    console.log("[true-site-size] comment posted");
   }
 
   // expose results for downstream steps

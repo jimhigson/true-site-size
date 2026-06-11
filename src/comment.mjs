@@ -1,4 +1,4 @@
-const marker = "<!-- real-site-size -->";
+const marker = "<!-- true-site-size -->";
 
 const formatBytes = (n) => {
   if (n == null) return "—";
