@@ -65,6 +65,7 @@ journey: |
 | `{ "keys": "ArrowDown Enter" }` | trusted key presses, space-separated (named keys or single characters) |
 | `{ "script": "..." }` | evaluate in the page, awaited if it returns a promise — the escape hatch |
 | `{ "row": name, "mark": markName }` | wait for the `performance.mark`, let the network settle, close the segment as a comment row |
+| `{ "row": name, "marks": [m1, m2] }` | as `mark`, but waits for *all* the named marks - for apps whose readiness is several independently-loading parts |
 
 Any step may also carry `"afterMark": markName` to wait for an app readiness
 mark before acting. Deliberately *not* included: actionability heuristics,

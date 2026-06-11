@@ -411,11 +411,20 @@ export const runJourney = async (
             throw new Error(`script step threw: ${exceptionDetails.text}`);
           }
         } else if (step.row !== undefined) {
-          const markTime = await waitForMark(step.mark, markTimeoutMs);
-          if (markTime === null) {
-            throw new Error(
-              `mark "${step.mark}" not seen within ${markTimeoutMs}ms`,
+          // a row may wait on one mark or several (all must fire) - for apps
+          // whose "ready" is the conjunction of independently-loading parts
+          const marks = step.marks ?? [step.mark];
+          const deadline = Date.now() + markTimeoutMs;
+          for (const mark of marks) {
+            const markTime = await waitForMark(
+              mark,
+              Math.max(0, deadline - Date.now()),
             );
+            if (markTime === null) {
+              throw new Error(
+                `mark "${mark}" not seen within ${markTimeoutMs}ms`,
+              );
+            }
           }
           await waitForSettle();
           results.push({
