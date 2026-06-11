@@ -65,9 +65,11 @@ const launchChrome = async () => {
   });
   return {
     port,
-    close: () => {
+    close: async () => {
+      const exited = new Promise((r) => child.once("exit", r));
       child.kill();
-      rmSync(userDataDir, { recursive: true, force: true });
+      await exited;
+      rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5 });
     },
   };
 };
@@ -179,7 +181,7 @@ export const runScenarios = async (
     }
   } finally {
     await client.close().catch(() => {});
-    chrome.close();
+    await chrome.close();
   }
   return results;
 };
