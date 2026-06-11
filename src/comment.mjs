@@ -26,7 +26,7 @@ export const formatComment = (
   /** per-scenario base results, or null when no base was measurable */
   base,
   /** { baseLabel } */
-  { baseLabel, runUrl, commentKey, stripHash },
+  { baseLabel, runUrl, commentKey, stripHash, spreadToleranceBytes = 0 },
 ) => {
   const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
   /** filename for matching across refs: pathname with the content hash removed */
@@ -123,8 +123,12 @@ export const formatComment = (
     })
     .join("");
 
-  const spreadNote = head.some((h) => h.bytesSpread > 0)
-    ? `\n> ⚠️ **determinism check failed**: repeat runs transferred different bytes (max spread ${formatBytes(Math.max(...head.map((h) => h.bytesSpread ?? 0)))}). Something loads non-deterministically - do not trust deltas until investigated. The per-request breakdown in the run logs shows which requests varied.`
+  const maxSpread = Math.max(...head.map((h) => h.bytesSpread ?? 0), 0);
+  const spreadNote =
+    maxSpread > spreadToleranceBytes ?
+      `\n> ⚠️ **determinism check failed**: repeat runs transferred different bytes (max spread ${formatBytes(maxSpread)}, tolerance ${formatBytes(spreadToleranceBytes)}). Something loads non-deterministically - do not trust deltas until investigated. The per-request breakdown in the run logs shows which requests varied.`
+    : maxSpread > 0 ?
+      `\n<sub>runs varied by up to ${formatBytes(maxSpread)} (h2 header-compression noise, within the ${formatBytes(spreadToleranceBytes)} tolerance) - the minimum is reported</sub>`
     : "";
 
   return `${markerFor(commentKey)}

@@ -72,6 +72,7 @@ const main = async () => {
     markTimeoutMs: Number(input("mark-timeout-ms", "60000")),
     baseRef: input("base-ref", ""),
     commentKey: input("comment-key", ""),
+    spreadToleranceBytes: Number(input("spread-tolerance-bytes", "512")),
     stripHash: input("strip-hash", "(-[a-zA-Z0-9_-]{8})\\.", {
       allowEmpty: true,
     }),
@@ -211,6 +212,7 @@ const main = async () => {
     runUrl,
     commentKey: config.commentKey,
     stripHash: config.stripHash,
+    spreadToleranceBytes: config.spreadToleranceBytes,
   });
   console.log(body);
 

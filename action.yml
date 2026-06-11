@@ -82,6 +82,12 @@ inputs:
       distinguishes multiple uses on one PR - each key maintains its own
       comment (and is shown in the comment heading)
     default: ""
+  spread-tolerance-bytes:
+    description: >
+      byte spread between repeat runs treated as protocol noise rather than
+      non-determinism (h2 header compression varies slightly with request
+      arrival order). Spread above this triggers the determinism warning.
+    default: "512"
   strip-hash:
     description: >
       regex removed from request filenames so the per-file breakdown matches
@@ -123,4 +129,5 @@ runs:
         INPUT_COMMENT: ${{ inputs.comment }}
         INPUT_COMMENT_KEY: ${{ inputs.comment-key }}
         INPUT_STRIP_HASH: ${{ inputs.strip-hash }}
+        INPUT_SPREAD_TOLERANCE_BYTES: ${{ inputs.spread-tolerance-bytes }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}

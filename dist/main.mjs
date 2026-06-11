@@ -31627,7 +31627,7 @@ var formatDelta = (head, base) => {
   const sign = d > 0 ? "+" : "";
   return `${arrow} ${sign}${formatBytes(Math.abs(d))}${d < 0 ? " saved" : ""} (${sign}${pct.toFixed(1)}%)`;
 };
-var formatComment = (head, base, { baseLabel, runUrl, commentKey, stripHash }) => {
+var formatComment = (head, base, { baseLabel, runUrl, commentKey, stripHash, spreadToleranceBytes = 0 }) => {
   const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
   const fileOf = (url) => {
     const path = url.startsWith("blob:") ? "(blob)" : new URL(url).pathname;
@@ -31694,8 +31694,10 @@ ${fileRows.join("\n")}
 > \u{1F501} **${h.name}** downloads \`${new URL(url).pathname}\` ${n} times in full - likely uncoalesced duplicate requests (eg crossorigin mismatch)`
     );
   }).join("");
-  const spreadNote = head.some((h) => h.bytesSpread > 0) ? `
-> \u26A0\uFE0F **determinism check failed**: repeat runs transferred different bytes (max spread ${formatBytes(Math.max(...head.map((h) => h.bytesSpread ?? 0)))}). Something loads non-deterministically - do not trust deltas until investigated. The per-request breakdown in the run logs shows which requests varied.` : "";
+  const maxSpread = Math.max(...head.map((h) => h.bytesSpread ?? 0), 0);
+  const spreadNote = maxSpread > spreadToleranceBytes ? `
+> \u26A0\uFE0F **determinism check failed**: repeat runs transferred different bytes (max spread ${formatBytes(maxSpread)}, tolerance ${formatBytes(spreadToleranceBytes)}). Something loads non-deterministically - do not trust deltas until investigated. The per-request breakdown in the run logs shows which requests varied.` : maxSpread > 0 ? `
+<sub>runs varied by up to ${formatBytes(maxSpread)} (h2 header-compression noise, within the ${formatBytes(spreadToleranceBytes)} tolerance) - the minimum is reported</sub>` : "";
   return `${markerFor(commentKey)}
 ### \u{1F4E1} real network cost to ready${commentKey ? ` (${commentKey})` : ""}
 
@@ -32279,6 +32281,7 @@ var main = async () => {
     markTimeoutMs: Number(input("mark-timeout-ms", "60000")),
     baseRef: input("base-ref", ""),
     commentKey: input("comment-key", ""),
+    spreadToleranceBytes: Number(input("spread-tolerance-bytes", "512")),
     stripHash: input("strip-hash", "(-[a-zA-Z0-9_-]{8})\\.", {
       allowEmpty: true
     }),
@@ -32379,7 +32382,8 @@ var main = async () => {
     baseLabel,
     runUrl,
     commentKey: config.commentKey,
-    stripHash: config.stripHash
+    stripHash: config.stripHash,
+    spreadToleranceBytes: config.spreadToleranceBytes
   });
   console.log(body);
   const issueNumber = event.pull_request?.number;
