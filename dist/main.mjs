@@ -31616,7 +31616,7 @@ var formatDelta = (head, base) => {
   const pct = base === 0 ? 0 : d / base * 100;
   const arrow = d > 0 ? "\u{1F53A}" : d < 0 ? "\u{1F7E2}" : "\u2705";
   const sign = d > 0 ? "+" : "";
-  return `${arrow} ${sign}${formatBytes(Math.abs(d) * Math.sign(d) || 0).replace("-", "")}${d < 0 ? " saved" : ""} (${sign}${pct.toFixed(1)}%)`;
+  return `${arrow} ${sign}${formatBytes(Math.abs(d))}${d < 0 ? " saved" : ""} (${sign}${pct.toFixed(1)}%)`;
 };
 var formatComment = (head, base, { baseLabel }) => {
   const rows = head.map((h) => {
@@ -31758,15 +31758,25 @@ var runScenarios = async (scenarios, { settleMs, markTimeoutMs }) => {
     await Network.enable({});
     await Network.setBypassServiceWorker({ bypass: true });
     await Page.enable();
+    await Page.addScriptToEvaluateOnNewDocument({
+      source: `if (navigator.serviceWorker) {
+        navigator.serviceWorker.register = () =>
+          Promise.reject(new Error("service workers disabled by true-site-size"));
+      }`
+    });
     await Runtime.enable();
     let bytes = 0;
     let requests = 0;
     let failed = 0;
     let lastActivity = Date.now();
     const inflight = /* @__PURE__ */ new Set();
+    let requestLog = [];
+    let scenarioStart = Date.now();
+    const urlOf = /* @__PURE__ */ new Map();
     Network.requestWillBeSent(({ requestId, request }) => {
       if (request.url.startsWith("data:")) return;
       inflight.add(requestId);
+      urlOf.set(requestId, request.url);
       lastActivity = Date.now();
     });
     Network.loadingFinished(({ requestId, encodedDataLength }) => {
@@ -31774,6 +31784,11 @@ var runScenarios = async (scenarios, { settleMs, markTimeoutMs }) => {
       inflight.delete(requestId);
       bytes += encodedDataLength;
       requests += 1;
+      requestLog.push({
+        url: urlOf.get(requestId),
+        bytes: encodedDataLength,
+        atMs: Date.now() - scenarioStart
+      });
       lastActivity = Date.now();
     });
     Network.loadingFailed(({ requestId }) => {
@@ -31790,6 +31805,8 @@ var runScenarios = async (scenarios, { settleMs, markTimeoutMs }) => {
       requests = 0;
       failed = 0;
       inflight.clear();
+      requestLog = [];
+      scenarioStart = Date.now();
       const navStart = Date.now();
       await Page.navigate({ url: scenario.url });
       let markTime;
@@ -31826,7 +31843,8 @@ var runScenarios = async (scenarios, { settleMs, markTimeoutMs }) => {
         bytes,
         requests,
         failedRequests: failed,
-        timeToMarkMs: Math.round(markTime)
+        timeToMarkMs: Math.round(markTime),
+        requestLog: [...requestLog]
       });
     }
   } finally {

@@ -16,7 +16,7 @@ const formatDelta = (head, base) => {
     : d < 0 ? "🟢"
     : "✅";
   const sign = d > 0 ? "+" : "";
-  return `${arrow} ${sign}${formatBytes(Math.abs(d) * Math.sign(d) || 0).replace("-", "")}${d < 0 ? " saved" : ""} (${sign}${pct.toFixed(1)}%)`;
+  return `${arrow} ${sign}${formatBytes(Math.abs(d))}${d < 0 ? " saved" : ""} (${sign}${pct.toFixed(1)}%)`;
 };
 
 /** build the markdown body for the PR comment */

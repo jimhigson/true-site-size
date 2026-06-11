@@ -98,6 +98,16 @@ export const runScenarios = async (
     await Network.enable({});
     await Network.setBypassServiceWorker({ bypass: true });
     await Page.enable();
+    // bypassing only stops an active worker serving requests - registration
+    // would still install one whose background precache warms the http cache
+    // and silently absorbs page bytes. Disable registration outright so the
+    // measurement sees what a fresh visitor's page actually transfers
+    await Page.addScriptToEvaluateOnNewDocument({
+      source: `if (navigator.serviceWorker) {
+        navigator.serviceWorker.register = () =>
+          Promise.reject(new Error("service workers disabled by true-site-size"));
+      }`,
+    });
     await Runtime.enable();
 
     // network accounting - reset per scenario
@@ -106,10 +116,15 @@ export const runScenarios = async (
     let failed = 0;
     let lastActivity = Date.now();
     const inflight = new Set();
+    /** per-request {url, bytes, atMs} for the current scenario */
+    let requestLog = [];
+    let scenarioStart = Date.now();
+    const urlOf = new Map();
 
     Network.requestWillBeSent(({ requestId, request }) => {
       if (request.url.startsWith("data:")) return;
       inflight.add(requestId);
+      urlOf.set(requestId, request.url);
       lastActivity = Date.now();
     });
     Network.loadingFinished(({ requestId, encodedDataLength }) => {
@@ -117,6 +132,11 @@ export const runScenarios = async (
       inflight.delete(requestId);
       bytes += encodedDataLength;
       requests += 1;
+      requestLog.push({
+        url: urlOf.get(requestId),
+        bytes: encodedDataLength,
+        atMs: Date.now() - scenarioStart,
+      });
       lastActivity = Date.now();
     });
     Network.loadingFailed(({ requestId }) => {
@@ -134,6 +154,8 @@ export const runScenarios = async (
       requests = 0;
       failed = 0;
       inflight.clear();
+      requestLog = [];
+      scenarioStart = Date.now();
 
       const navStart = Date.now();
       await Page.navigate({ url: scenario.url });
@@ -179,6 +201,7 @@ export const runScenarios = async (
         requests,
         failedRequests: failed,
         timeToMarkMs: Math.round(markTime),
+        requestLog: [...requestLog],
       });
     }
   } finally {
