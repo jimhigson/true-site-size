@@ -31729,6 +31729,8 @@ var launchChrome = async () => {
       "--mute-audio",
       // ci runners have a small /dev/shm which can crash renderers
       "--disable-dev-shm-usage",
+      // the measurement server's self-signed localhost cert (needed for h2)
+      "--ignore-certificate-errors",
       // external hosts resolve to nothing: measurements stay deterministic
       // and only the local server contributes bytes
       "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost",
@@ -32090,10 +32092,12 @@ var measure = async (steps, { runs, settleMs, markTimeoutMs, stepTimeoutMs, sett
 
 // src/serve.mjs
 import { createReadStream, existsSync as existsSync2, statSync } from "node:fs";
-import { createServer } from "node:http";
+import { createSecureServer } from "node:http2";
 import { extname, join as join2, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 import { readFileSync } from "node:fs";
+var certDir = fileURLToPath(new URL("./cert/", import.meta.url));
 var mimeTypes = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -32119,45 +32123,52 @@ var compressible = /* @__PURE__ */ new Set([
   "application/manifest+json"
 ]);
 var serve = (dir, compression) => new Promise((resolve2) => {
-  const server = createServer((req, res) => {
-    const url = new URL(req.url, "http://localhost");
-    let filePath = normalize(join2(dir, decodeURIComponent(url.pathname)));
-    if (!filePath.startsWith(normalize(dir))) {
-      res.writeHead(403).end();
-      return;
-    }
-    if (!existsSync2(filePath) || statSync(filePath).isDirectory()) {
-      const indexPath = join2(filePath, "index.html");
-      if (existsSync2(indexPath)) {
-        filePath = indexPath;
-      } else {
-        filePath = join2(dir, "index.html");
-        if (!existsSync2(filePath)) {
-          res.writeHead(404).end("not found");
-          return;
+  const server = createSecureServer(
+    {
+      cert: readFileSync(join2(certDir, "localhost-cert.pem")),
+      key: readFileSync(join2(certDir, "localhost-key.pem")),
+      allowHTTP1: true
+    },
+    (req, res) => {
+      const url = new URL(req.url, "https://localhost");
+      let filePath = normalize(join2(dir, decodeURIComponent(url.pathname)));
+      if (!filePath.startsWith(normalize(dir))) {
+        res.writeHead(403).end();
+        return;
+      }
+      if (!existsSync2(filePath) || statSync(filePath).isDirectory()) {
+        const indexPath = join2(filePath, "index.html");
+        if (existsSync2(indexPath)) {
+          filePath = indexPath;
+        } else {
+          filePath = join2(dir, "index.html");
+          if (!existsSync2(filePath)) {
+            res.writeHead(404).end("not found");
+            return;
+          }
         }
       }
+      const type = mimeTypes[extname(filePath)] ?? "application/octet-stream";
+      const acceptsEncoding = req.headers["accept-encoding"] ?? "";
+      const wantCompression = compression !== "none" && compressible.has(type) && acceptsEncoding.includes(compression);
+      res.setHeader("Content-Type", type);
+      res.setHeader("Cache-Control", "max-age=3600");
+      if (!wantCompression) {
+        createReadStream(filePath).pipe(res);
+        return;
+      }
+      const raw = readFileSync(filePath);
+      const body = compression === "br" ? brotliCompressSync(raw, {
+        params: { [constants.BROTLI_PARAM_QUALITY]: 9 }
+      }) : gzipSync(raw, { level: 9 });
+      res.setHeader("Content-Encoding", compression);
+      res.end(body);
     }
-    const type = mimeTypes[extname(filePath)] ?? "application/octet-stream";
-    const acceptsEncoding = req.headers["accept-encoding"] ?? "";
-    const wantCompression = compression !== "none" && compressible.has(type) && acceptsEncoding.includes(compression);
-    res.setHeader("Content-Type", type);
-    res.setHeader("Cache-Control", "max-age=3600");
-    if (!wantCompression) {
-      createReadStream(filePath).pipe(res);
-      return;
-    }
-    const raw = readFileSync(filePath);
-    const body = compression === "br" ? brotliCompressSync(raw, {
-      params: { [constants.BROTLI_PARAM_QUALITY]: 9 }
-    }) : gzipSync(raw, { level: 9 });
-    res.setHeader("Content-Encoding", compression);
-    res.end(body);
-  });
+  );
   server.listen(0, "127.0.0.1", () => {
     const { port } = server.address();
     resolve2({
-      origin: `http://localhost:${port}`,
+      origin: `https://localhost:${port}`,
       close: () => new Promise((r) => server.close(r))
     });
   });

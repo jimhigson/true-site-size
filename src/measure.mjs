@@ -42,6 +42,8 @@ const launchChrome = async () => {
       "--mute-audio",
       // ci runners have a small /dev/shm which can crash renderers
       "--disable-dev-shm-usage",
+      // the measurement server's self-signed localhost cert (needed for h2)
+      "--ignore-certificate-errors",
       // external hosts resolve to nothing: measurements stay deterministic
       // and only the local server contributes bytes
       "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost",
