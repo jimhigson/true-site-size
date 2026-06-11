@@ -29991,7 +29991,7 @@ var require_websocket = __commonJS({
     var http = __require("http");
     var net = __require("net");
     var tls = __require("tls");
-    var { randomBytes, createHash } = __require("crypto");
+    var { randomBytes, createHash: createHash2 } = __require("crypto");
     var { Readable } = __require("stream");
     var { URL: URL2 } = __require("url");
     var PerMessageDeflate = require_permessage_deflate();
@@ -30573,7 +30573,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest = createHash("sha1").update(key + GUID).digest("base64");
+        const digest = createHash2("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -30887,7 +30887,7 @@ var require_websocket_server = __commonJS({
     var https = __require("https");
     var net = __require("net");
     var tls = __require("tls");
-    var { createHash } = __require("crypto");
+    var { createHash: createHash2 } = __require("crypto");
     var PerMessageDeflate = require_permessage_deflate();
     var WebSocket = require_websocket();
     var { format, parse } = require_extension();
@@ -31114,7 +31114,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest = createHash("sha1").update(key + GUID).digest("base64");
+        const digest = createHash2("sha1").update(key + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -31598,18 +31598,27 @@ var require_chrome_remote_interface = __commonJS({
 });
 
 // src/main.mjs
+import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
 import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync2, rmSync as rmSync2, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join as join3, resolve } from "node:path";
 
-// src/comment.mjs
-var marker = "<!-- true-site-size -->";
+// src/formatBytes.mjs
 var formatBytes = (n) => {
   if (n == null) return "\u2014";
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`;
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 };
+var formatDuration = (ms) => {
+  if (ms == null) return "\u2014";
+  if (ms < 1e3) return `${Math.round(ms)}ms`;
+  return `${(ms / 1e3).toFixed(2)}s`;
+};
+
+// src/comment.mjs
+var marker = "<!-- true-site-size -->";
 var formatDelta = (head, base) => {
   if (head == null || base == null) return "\u2014";
   const d = head - base;
@@ -31627,7 +31636,7 @@ var formatComment = (head, base, { baseLabel, runUrl }) => {
     const baseCell = b == null ? "\u2014" : b.error ? `\u26A0\uFE0F no data` : formatBytes(b.bytes);
     const deltaCell = formatDelta(h.bytes, b?.error ? null : b?.bytes);
     const ignoredNote = h.ignoredBytes > 0 ? `, ${formatBytes(h.ignoredBytes)} ignored` : "";
-    return `| ${h.name} | ${formatBytes(h.bytes)} (${h.requests} reqs, ${h.timeToMarkMs}ms to mark${ignoredNote}) | ${baseCell} | ${deltaCell} |`;
+    return `| ${h.name} | ${formatBytes(h.bytes)} (${h.requests} reqs, ${formatDuration(h.timeToMarkMs)} to mark${ignoredNote}) | ${baseCell} | ${deltaCell} |`;
   });
   const totalHead = head.every((h) => !h.error) ? head.reduce((a, h) => a + h.bytes, 0) : null;
   const totalBase = base && base.every((b) => !b.error) ? base.reduce((a, b) => a + b.bytes, 0) : null;
@@ -31646,6 +31655,7 @@ ${totalRow}
 ${spreadNote}
 ${runUrl ? `
 <sub>\u{1F4CB} per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
+<sub>measured by [true-site-size](https://github.com/jimhigson/true-site-size)</sub>
 `;
 };
 var postComment = async (body, { token, repo, issueNumber, apiUrl = "https://api.github.com" }) => {
@@ -31674,14 +31684,6 @@ var postComment = async (body, { token, repo, issueNumber, apiUrl = "https://api
   if (!res.ok) {
     throw new Error(`posting comment failed: ${res.status} ${await res.text()}`);
   }
-};
-
-// src/formatBytes.mjs
-var formatBytes2 = (n) => {
-  if (n == null) return "\u2014";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`;
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 };
 
 // src/measure.mjs
@@ -32153,18 +32155,18 @@ var main = async () => {
         continue;
       }
       console.log(
-        `[true-site-size] ${label} / ${r.name}: ${formatBytes2(r.bytes)} over ${r.requests} requests, mark at ${r.timeToMarkMs}ms (per-request breakdown follows, largest first)`
+        `[true-site-size] ${label} / ${r.name}: ${formatBytes(r.bytes)} over ${r.requests} requests, mark at ${formatDuration(r.timeToMarkMs)} (per-request breakdown follows, largest first)`
       );
       const sorted = [...r.requestLog ?? []].sort((a, b) => b.bytes - a.bytes);
       for (const { url, bytes, atMs, ignored } of sorted) {
         if (ignored) {
           console.log(
-            `  ${formatBytes2(bytes).padStart(9)}  at ${String(atMs).padStart(6)}ms  ${url}  [ignored - not counted]`
+            `  ${formatBytes(bytes).padStart(9)}  at ${String(atMs).padStart(6)}ms  ${url}  [ignored - not counted]`
           );
           continue;
         }
         console.log(
-          `  ${formatBytes2(bytes).padStart(9)}  at ${String(atMs).padStart(6)}ms  ${url}`
+          `  ${formatBytes(bytes).padStart(9)}  at ${String(atMs).padStart(6)}ms  ${url}`
         );
       }
     }
@@ -32180,20 +32182,47 @@ var main = async () => {
   let baseLabel = "\u2014";
   if (compareRef) {
     baseLabel = `\`${compareRef}\``;
-    console.log(`[true-site-size] measuring base (${compareRef})...`);
-    const baseDir = join3(workspace, ".true-site-size-base");
-    rmSync2(baseDir, { recursive: true, force: true });
     run(`git fetch --no-tags --depth=1 origin ${compareRef}`, workspace);
-    run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
-    try {
-      base = await buildAndMeasure(baseDir, config);
-      logBreakdown("base", base);
-    } catch (e) {
-      console.warn(
-        `[true-site-size] base measurement failed (reporting head only): ${e.message}`
+    const baseSha = execSync("git rev-parse FETCH_HEAD", { cwd: workspace }).toString().trim();
+    const configHash = createHash("sha256").update(
+      JSON.stringify({
+        steps: config.steps,
+        compression: config.compression,
+        runs: config.runs,
+        settleMs: config.settleMs,
+        ignorePatterns: config.ignorePatterns,
+        serveDir: config.serveDir,
+        buildCommand: config.buildCommand
+      })
+    ).digest("hex").slice(0, 16);
+    const cacheDir = process.env.TRUE_SITE_SIZE_CACHE_DIR ?? (process.env.GITHUB_ACTIONS ? join3(homedir(), ".true-site-size-cache") : null);
+    const cacheFile = cacheDir ? join3(cacheDir, `base-${baseSha}-${configHash}.json`) : null;
+    if (cacheFile && existsSync3(cacheFile)) {
+      base = JSON.parse(readFileSync2(cacheFile, "utf8"));
+      console.log(
+        `[true-site-size] base (${compareRef} @ ${baseSha.slice(0, 9)}) loaded from cache - skipping its build and measurement`
       );
-    } finally {
-      run(`git worktree remove --force ${baseDir}`, workspace);
+      logBreakdown("base (cached)", base);
+    } else {
+      console.log(`[true-site-size] measuring base (${compareRef})...`);
+      const baseDir = join3(workspace, ".true-site-size-base");
+      rmSync2(baseDir, { recursive: true, force: true });
+      run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
+      try {
+        base = await buildAndMeasure(baseDir, config);
+        logBreakdown("base", base);
+        if (cacheFile && base.every((r) => !r.error)) {
+          mkdirSync(cacheDir, { recursive: true });
+          writeFileSync(cacheFile, JSON.stringify(base));
+          console.log("[true-site-size] base result cached for future runs");
+        }
+      } catch (e) {
+        console.warn(
+          `[true-site-size] base measurement failed (reporting head only): ${e.message}`
+        );
+      } finally {
+        run(`git worktree remove --force ${baseDir}`, workspace);
+      }
     }
   }
   const runUrl = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : void 0;

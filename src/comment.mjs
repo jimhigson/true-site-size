@@ -1,11 +1,6 @@
-const marker = "<!-- true-site-size -->";
+import { formatBytes, formatDuration } from "./formatBytes.mjs";
 
-const formatBytes = (n) => {
-  if (n == null) return "—";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`;
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
-};
+const marker = "<!-- true-site-size -->";
 
 const formatDelta = (head, base) => {
   if (head == null || base == null) return "—";
@@ -40,7 +35,7 @@ export const formatComment = (
     const deltaCell = formatDelta(h.bytes, b?.error ? null : b?.bytes);
     const ignoredNote =
       h.ignoredBytes > 0 ? `, ${formatBytes(h.ignoredBytes)} ignored` : "";
-    return `| ${h.name} | ${formatBytes(h.bytes)} (${h.requests} reqs, ${h.timeToMarkMs}ms to mark${ignoredNote}) | ${baseCell} | ${deltaCell} |`;
+    return `| ${h.name} | ${formatBytes(h.bytes)} (${h.requests} reqs, ${formatDuration(h.timeToMarkMs)} to mark${ignoredNote}) | ${baseCell} | ${deltaCell} |`;
   });
 
   const totalHead = head.every((h) => !h.error)
@@ -70,6 +65,7 @@ ${rows.join("\n")}
 ${totalRow}
 ${spreadNote}
 ${runUrl ? `\n<sub>📋 per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
+<sub>measured by [true-site-size](https://github.com/jimhigson/true-site-size)</sub>
 `;
 };
 

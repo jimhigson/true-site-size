@@ -4,3 +4,9 @@ export const formatBytes = (n) => {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`;
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 };
+
+export const formatDuration = (ms) => {
+  if (ms == null) return "\u2014";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+};

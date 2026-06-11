@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { formatComment, postComment } from "./comment.mjs";
-import { formatBytes } from "./formatBytes.mjs";
+import { formatBytes, formatDuration } from "./formatBytes.mjs";
 import { measure } from "./measure.mjs";
 import { serve } from "./serve.mjs";
 
@@ -87,7 +87,7 @@ const main = async () => {
         continue;
       }
       console.log(
-        `[true-site-size] ${label} / ${r.name}: ${formatBytes(r.bytes)} over ${r.requests} requests, mark at ${r.timeToMarkMs}ms (per-request breakdown follows, largest first)`,
+        `[true-site-size] ${label} / ${r.name}: ${formatBytes(r.bytes)} over ${r.requests} requests, mark at ${formatDuration(r.timeToMarkMs)} (per-request breakdown follows, largest first)`,
       );
       const sorted = [...(r.requestLog ?? [])].sort((a, b) => b.bytes - a.bytes);
       for (const { url, bytes, atMs, ignored } of sorted) {
@@ -123,20 +123,65 @@ const main = async () => {
   let baseLabel = "—";
   if (compareRef) {
     baseLabel = `\`${compareRef}\``;
-    console.log(`[true-site-size] measuring base (${compareRef})...`);
-    const baseDir = join(workspace, ".true-site-size-base");
-    rmSync(baseDir, { recursive: true, force: true });
     run(`git fetch --no-tags --depth=1 origin ${compareRef}`, workspace);
-    run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
-    try {
-      base = await buildAndMeasure(baseDir, config);
-      logBreakdown("base", base);
-    } catch (e) {
-      console.warn(
-        `[true-site-size] base measurement failed (reporting head only): ${e.message}`,
+    const baseSha = execSync("git rev-parse FETCH_HEAD", { cwd: workspace })
+      .toString()
+      .trim();
+
+    // base results are cached by (base sha, measurement config): the same
+    // base is typically re-measured on every push to a pr, and rebuilding it
+    // each time is the expensive half of the job. The cache dir is persisted
+    // between runs by actions/cache (see action.yml)
+    const configHash = createHash("sha256")
+      .update(
+        JSON.stringify({
+          steps: config.steps,
+          compression: config.compression,
+          runs: config.runs,
+          settleMs: config.settleMs,
+          ignorePatterns: config.ignorePatterns,
+          serveDir: config.serveDir,
+          buildCommand: config.buildCommand,
+        }),
+      )
+      .digest("hex")
+      .slice(0, 16);
+    const cacheDir =
+      process.env.TRUE_SITE_SIZE_CACHE_DIR ??
+      (process.env.GITHUB_ACTIONS ?
+        join(homedir(), ".true-site-size-cache")
+      : null);
+    const cacheFile =
+      cacheDir ? join(cacheDir, `base-${baseSha}-${configHash}.json`) : null;
+
+    if (cacheFile && existsSync(cacheFile)) {
+      base = JSON.parse(readFileSync(cacheFile, "utf8"));
+      console.log(
+        `[true-site-size] base (${compareRef} @ ${baseSha.slice(0, 9)}) loaded from cache - skipping its build and measurement`,
       );
-    } finally {
-      run(`git worktree remove --force ${baseDir}`, workspace);
+      logBreakdown("base (cached)", base);
+    } else {
+      console.log(`[true-site-size] measuring base (${compareRef})...`);
+      const baseDir = join(workspace, ".true-site-size-base");
+      rmSync(baseDir, { recursive: true, force: true });
+      run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
+      try {
+        base = await buildAndMeasure(baseDir, config);
+        logBreakdown("base", base);
+        // only cache fully-successful measurements: an error row (eg a
+        // missing mark, or a flaky run) must not persist for this sha
+        if (cacheFile && base.every((r) => !r.error)) {
+          mkdirSync(cacheDir, { recursive: true });
+          writeFileSync(cacheFile, JSON.stringify(base));
+          console.log("[true-site-size] base result cached for future runs");
+        }
+      } catch (e) {
+        console.warn(
+          `[true-site-size] base measurement failed (reporting head only): ${e.message}`,
+        );
+      } finally {
+        run(`git worktree remove --force ${baseDir}`, workspace);
+      }
     }
   }
 
