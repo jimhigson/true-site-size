@@ -2,6 +2,7 @@ import CDP from "chrome-remote-interface";
 import { spawn } from "node:child_process";
 
 import { formatDuration } from "./formatBytes.mjs";
+import { certSpkiHash } from "./serve.mjs";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -44,8 +45,11 @@ const launchChrome = async () => {
       "--mute-audio",
       // ci runners have a small /dev/shm which can crash renderers
       "--disable-dev-shm-usage",
-      // the measurement server's self-signed localhost cert (needed for h2)
-      "--ignore-certificate-errors",
+      // trust (not merely ignore) the measurement server's self-signed cert:
+      // spki pinning keeps chrome's http cache enabled, where a blanket
+      // ignore-certificate-errors would disable caching for the origin and
+      // fake duplicate-download bugs
+      `--ignore-certificate-errors-spki-list=${certSpkiHash}`,
       // external hosts resolve to nothing: measurements stay deterministic
       // and only the local server contributes bytes
       "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost",

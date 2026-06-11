@@ -1,3 +1,4 @@
+import { createHash, createPublicKey } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createSecureServer } from "node:http2";
 import { extname, join, normalize } from "node:path";
@@ -9,9 +10,24 @@ import { readFileSync } from "node:fs";
 // overhead far smaller than http/1.1 - measuring over h2 keeps wire bytes
 // honest. Browsers only speak h2 over TLS, so a throwaway self-signed
 // localhost cert ships with the action (deliberately public: it exists only
-// so headless chrome - launched with --ignore-certificate-errors - can ALPN
-// to h2 on loopback during measurement)
+// so headless chrome can ALPN to h2 on loopback during measurement)
 const certDir = fileURLToPath(new URL("./cert/", import.meta.url));
+
+/**
+ * chrome must treat the cert as properly TRUSTED, not merely have its error
+ * ignored: with a blanket --ignore-certificate-errors, chrome disables the
+ * http cache for the origin, which fakes duplicate-download bugs (a repeat
+ * request that should be a cache hit re-downloads in full). Pinning the
+ * cert's public key via --ignore-certificate-errors-spki-list makes the
+ * origin trusted-equivalent, so caching behaves like production
+ */
+export const certSpkiHash = createHash("sha256")
+  .update(
+    createPublicKey(
+      readFileSync(join(certDir, "localhost-cert.pem")),
+    ).export({ type: "spki", format: "der" }),
+  )
+  .digest("base64");
 
 const mimeTypes = {
   ".html": "text/html",

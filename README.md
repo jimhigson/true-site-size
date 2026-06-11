@@ -122,7 +122,8 @@ Measures taken so the numbers are reproducible and honest:
 
 The built site is served over **http/2 with TLS** (a deliberately-public
 self-signed localhost certificate ships with the action; headless Chrome
-trusts it via `--ignore-certificate-errors`). h2's compressed headers and
+trusts it via spki pinning, which - unlike a blanket ignore-certificate-errors
+- keeps the http cache enabled so caching behaves like production). h2's compressed headers and
 multiplexing make both byte counts and request timing match what a production
 host transfers — http/1.1 serving would overstate per-request overhead and
 accidentally serialise parallel fetches. Response bodies are compressed per

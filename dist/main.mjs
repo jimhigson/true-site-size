@@ -29991,7 +29991,7 @@ var require_websocket = __commonJS({
     var http = __require("http");
     var net = __require("net");
     var tls = __require("tls");
-    var { randomBytes, createHash: createHash2 } = __require("crypto");
+    var { randomBytes, createHash: createHash3 } = __require("crypto");
     var { Readable } = __require("stream");
     var { URL: URL2 } = __require("url");
     var PerMessageDeflate = require_permessage_deflate();
@@ -30573,7 +30573,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest = createHash2("sha1").update(key + GUID).digest("base64");
+        const digest = createHash3("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -30887,7 +30887,7 @@ var require_websocket_server = __commonJS({
     var https = __require("https");
     var net = __require("net");
     var tls = __require("tls");
-    var { createHash: createHash2 } = __require("crypto");
+    var { createHash: createHash3 } = __require("crypto");
     var PerMessageDeflate = require_permessage_deflate();
     var WebSocket = require_websocket();
     var { format, parse } = require_extension();
@@ -31114,7 +31114,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest = createHash2("sha1").update(key + GUID).digest("base64");
+        const digest = createHash3("sha1").update(key + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -31598,7 +31598,7 @@ var require_chrome_remote_interface = __commonJS({
 });
 
 // src/main.mjs
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 import { execSync } from "node:child_process";
 import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync2, rmSync as rmSync2, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -31747,9 +31747,101 @@ var postComment = async (body, { token, repo, issueNumber, commentKey, apiUrl = 
 // src/measure.mjs
 var import_chrome_remote_interface = __toESM(require_chrome_remote_interface(), 1);
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+
+// src/serve.mjs
+import { createHash, createPublicKey } from "node:crypto";
+import { createReadStream, existsSync, statSync } from "node:fs";
+import { createSecureServer } from "node:http2";
+import { extname, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
+import { brotliCompressSync, constants, gzipSync } from "node:zlib";
+import { readFileSync } from "node:fs";
+var certDir = fileURLToPath(new URL("./cert/", import.meta.url));
+var certSpkiHash = createHash("sha256").update(
+  createPublicKey(
+    readFileSync(join(certDir, "localhost-cert.pem"))
+  ).export({ type: "spki", format: "der" })
+).digest("base64");
+var mimeTypes = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".mjs": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".jpg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
+  ".opus": "audio/ogg",
+  ".mp3": "audio/mpeg",
+  ".wasm": "application/wasm",
+  ".webmanifest": "application/manifest+json"
+};
+var compressible = /* @__PURE__ */ new Set([
+  "text/html",
+  "text/javascript",
+  "text/css",
+  "application/json",
+  "image/svg+xml",
+  "application/manifest+json"
+]);
+var serve = (dir, compression) => new Promise((resolve2) => {
+  const server = createSecureServer(
+    {
+      cert: readFileSync(join(certDir, "localhost-cert.pem")),
+      key: readFileSync(join(certDir, "localhost-key.pem")),
+      allowHTTP1: true
+    },
+    (req, res) => {
+      const url = new URL(req.url, "https://localhost");
+      let filePath = normalize(join(dir, decodeURIComponent(url.pathname)));
+      if (!filePath.startsWith(normalize(dir))) {
+        res.writeHead(403).end();
+        return;
+      }
+      if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
+        const indexPath = join(filePath, "index.html");
+        if (existsSync(indexPath)) {
+          filePath = indexPath;
+        } else {
+          filePath = join(dir, "index.html");
+          if (!existsSync(filePath)) {
+            res.writeHead(404).end("not found");
+            return;
+          }
+        }
+      }
+      const type = mimeTypes[extname(filePath)] ?? "application/octet-stream";
+      const acceptsEncoding = req.headers["accept-encoding"] ?? "";
+      const wantCompression = compression !== "none" && compressible.has(type) && acceptsEncoding.includes(compression);
+      res.setHeader("Content-Type", type);
+      res.setHeader("Cache-Control", "max-age=3600");
+      if (!wantCompression) {
+        createReadStream(filePath).pipe(res);
+        return;
+      }
+      const raw = readFileSync(filePath);
+      const body = compression === "br" ? brotliCompressSync(raw, {
+        params: { [constants.BROTLI_PARAM_QUALITY]: 9 }
+      }) : gzipSync(raw, { level: 9 });
+      res.setHeader("Content-Encoding", compression);
+      res.end(body);
+    }
+  );
+  server.listen(0, "127.0.0.1", () => {
+    const { port } = server.address();
+    resolve2({
+      origin: `https://localhost:${port}`,
+      close: () => new Promise((r) => server.close(r))
+    });
+  });
+});
+
+// src/measure.mjs
+import { existsSync as existsSync2, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join as join2 } from "node:path";
 var chromeCandidates = [
   process.env.CHROME_PATH,
   "/usr/bin/google-chrome",
@@ -31760,7 +31852,7 @@ var chromeCandidates = [
   "/Applications/Chromium.app/Contents/MacOS/Chromium"
 ].filter(Boolean);
 var findChrome = () => {
-  const found = chromeCandidates.find((c) => existsSync(c));
+  const found = chromeCandidates.find((c) => existsSync2(c));
   if (!found) {
     throw new Error(
       `no Chrome found - set CHROME_PATH. Tried: ${chromeCandidates.join(", ")}`
@@ -31769,7 +31861,7 @@ var findChrome = () => {
   return found;
 };
 var launchChrome = async () => {
-  const userDataDir = mkdtempSync(join(tmpdir(), "true-site-size-"));
+  const userDataDir = mkdtempSync(join2(tmpdir(), "true-site-size-"));
   const child = spawn(
     findChrome(),
     [
@@ -31786,8 +31878,11 @@ var launchChrome = async () => {
       "--mute-audio",
       // ci runners have a small /dev/shm which can crash renderers
       "--disable-dev-shm-usage",
-      // the measurement server's self-signed localhost cert (needed for h2)
-      "--ignore-certificate-errors",
+      // trust (not merely ignore) the measurement server's self-signed cert:
+      // spki pinning keeps chrome's http cache enabled, where a blanket
+      // ignore-certificate-errors would disable caching for the origin and
+      // fake duplicate-download bugs
+      `--ignore-certificate-errors-spki-list=${certSpkiHash}`,
       // external hosts resolve to nothing: measurements stay deterministic
       // and only the local server contributes bytes
       "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost",
@@ -32154,90 +32249,6 @@ var measure = async (steps, { runs, settleMs, markTimeoutMs, stepTimeoutMs, sett
   });
 };
 
-// src/serve.mjs
-import { createReadStream, existsSync as existsSync2, statSync } from "node:fs";
-import { createSecureServer } from "node:http2";
-import { extname, join as join2, normalize } from "node:path";
-import { fileURLToPath } from "node:url";
-import { brotliCompressSync, constants, gzipSync } from "node:zlib";
-import { readFileSync } from "node:fs";
-var certDir = fileURLToPath(new URL("./cert/", import.meta.url));
-var mimeTypes = {
-  ".html": "text/html",
-  ".js": "text/javascript",
-  ".mjs": "text/javascript",
-  ".css": "text/css",
-  ".json": "application/json",
-  ".png": "image/png",
-  ".webp": "image/webp",
-  ".jpg": "image/jpeg",
-  ".svg": "image/svg+xml",
-  ".woff2": "font/woff2",
-  ".opus": "audio/ogg",
-  ".mp3": "audio/mpeg",
-  ".wasm": "application/wasm",
-  ".webmanifest": "application/manifest+json"
-};
-var compressible = /* @__PURE__ */ new Set([
-  "text/html",
-  "text/javascript",
-  "text/css",
-  "application/json",
-  "image/svg+xml",
-  "application/manifest+json"
-]);
-var serve = (dir, compression) => new Promise((resolve2) => {
-  const server = createSecureServer(
-    {
-      cert: readFileSync(join2(certDir, "localhost-cert.pem")),
-      key: readFileSync(join2(certDir, "localhost-key.pem")),
-      allowHTTP1: true
-    },
-    (req, res) => {
-      const url = new URL(req.url, "https://localhost");
-      let filePath = normalize(join2(dir, decodeURIComponent(url.pathname)));
-      if (!filePath.startsWith(normalize(dir))) {
-        res.writeHead(403).end();
-        return;
-      }
-      if (!existsSync2(filePath) || statSync(filePath).isDirectory()) {
-        const indexPath = join2(filePath, "index.html");
-        if (existsSync2(indexPath)) {
-          filePath = indexPath;
-        } else {
-          filePath = join2(dir, "index.html");
-          if (!existsSync2(filePath)) {
-            res.writeHead(404).end("not found");
-            return;
-          }
-        }
-      }
-      const type = mimeTypes[extname(filePath)] ?? "application/octet-stream";
-      const acceptsEncoding = req.headers["accept-encoding"] ?? "";
-      const wantCompression = compression !== "none" && compressible.has(type) && acceptsEncoding.includes(compression);
-      res.setHeader("Content-Type", type);
-      res.setHeader("Cache-Control", "max-age=3600");
-      if (!wantCompression) {
-        createReadStream(filePath).pipe(res);
-        return;
-      }
-      const raw = readFileSync(filePath);
-      const body = compression === "br" ? brotliCompressSync(raw, {
-        params: { [constants.BROTLI_PARAM_QUALITY]: 9 }
-      }) : gzipSync(raw, { level: 9 });
-      res.setHeader("Content-Encoding", compression);
-      res.end(body);
-    }
-  );
-  server.listen(0, "127.0.0.1", () => {
-    const { port } = server.address();
-    resolve2({
-      origin: `https://localhost:${port}`,
-      close: () => new Promise((r) => server.close(r))
-    });
-  });
-});
-
 // src/main.mjs
 var input = (name, fallback, { allowEmpty = false } = {}) => {
   const v = process.env[`INPUT_${name.toUpperCase().replaceAll("-", "_")}`];
@@ -32344,7 +32355,7 @@ var main = async () => {
     baseLabel = `\`${compareRef}\``;
     run(`git fetch --no-tags --depth=1 origin ${compareRef}`, workspace);
     const baseSha = execSync("git rev-parse FETCH_HEAD", { cwd: workspace }).toString().trim();
-    const configHash = createHash("sha256").update(
+    const configHash = createHash2("sha256").update(
       JSON.stringify({
         steps: config.steps,
         compression: config.compression,
