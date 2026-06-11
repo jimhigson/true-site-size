@@ -90,6 +90,11 @@ inputs:
       non-determinism (h2 header compression varies slightly with request
       arrival order). Spread above this triggers the determinism warning.
     default: "512"
+  minimum-change-threshold:
+    description: >
+      changes smaller than this many bytes display as unchanged - same name,
+      semantics and default as compressed-size-action
+    default: "1"
   strip-hash:
     description: >
       regex removed from request filenames so the per-file breakdown matches
@@ -132,4 +137,5 @@ runs:
         INPUT_COMMENT_KEY: ${{ inputs.comment-key }}
         INPUT_STRIP_HASH: ${{ inputs.strip-hash }}
         INPUT_SPREAD_TOLERANCE_BYTES: ${{ inputs.spread-tolerance-bytes }}
+        INPUT_MINIMUM_CHANGE_THRESHOLD: ${{ inputs.minimum-change-threshold }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}

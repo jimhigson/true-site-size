@@ -73,6 +73,9 @@ const main = async () => {
     baseRef: input("base-ref", ""),
     commentKey: input("comment-key", ""),
     spreadToleranceBytes: Number(input("spread-tolerance-bytes", "512")),
+    // same name, semantics and default as compressed-size-action: changes
+    // below this many bytes display as unchanged
+    minimumChangeThreshold: Number(input("minimum-change-threshold", "1")),
     stripHash: input("strip-hash", "(-[a-zA-Z0-9_-]{8})\\.", {
       allowEmpty: true,
     }),
@@ -213,6 +216,7 @@ const main = async () => {
     commentKey: config.commentKey,
     stripHash: config.stripHash,
     spreadToleranceBytes: config.spreadToleranceBytes,
+    minimumChangeThreshold: config.minimumChangeThreshold,
   });
   console.log(body);
 

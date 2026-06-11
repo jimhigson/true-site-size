@@ -74,8 +74,9 @@ for anything exotic.
 
 ## What the comment shows
 
-- a row per journey segment: wire bytes, request count, time to mark, versus
-  the base ref, with the journey total
+- a row per journey segment: wire bytes and time to mark, versus the base
+  ref (with its own timing), and a total. Deltas smaller than
+  `minimum-change-threshold` bytes show as unchanged
 - a collapsed **per-file breakdown** when the base is measurable: files whose
   transfer changed, matched across builds with content hashes stripped
   (`strip-hash`), new (🆕) and no-longer-loaded (🗑️) files flagged, identical
@@ -163,6 +164,7 @@ Only fully-successful base measurements are cached.
 | `compression` | `gzip` | simulate the host: `gzip`, `br` or `none` |
 | `runs` | `2` | repeats; agreement within tolerance is the determinism check |
 | `spread-tolerance-bytes` | `512` | spread treated as h2 protocol noise |
+| `minimum-change-threshold` | `1` | deltas below this many bytes show as unchanged (as compressed-size-action) |
 | `ignore-url-patterns` | `[]` | JSON array of regexes excluded from counts |
 | `settle-ms` | `1500` | network quiet required after each mark |
 | `mark-timeout-ms` | `60000` | per-row wait for the mark |

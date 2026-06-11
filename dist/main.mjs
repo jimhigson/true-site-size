@@ -31619,15 +31619,23 @@ var formatDuration = (ms) => {
 
 // src/comment.mjs
 var markerFor = (commentKey) => `<!-- true-site-size${commentKey ? `:${commentKey}` : ""} -->`;
-var formatDelta = (head, base) => {
+var formatDelta = (head, base, minimumChangeThreshold) => {
   if (head == null || base == null) return "\u2014";
   const d = head - base;
-  const pct = base === 0 ? 0 : d / base * 100;
-  const arrow = d > 0 ? "\u{1F53A}" : d < 0 ? "\u{1F7E2}" : "\u2705";
-  const sign = d > 0 ? "+" : "";
-  return `${arrow} ${sign}${formatBytes(Math.abs(d))}${d < 0 ? " saved" : ""} (${sign}${pct.toFixed(1)}%)`;
+  if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "\u2705";
+  const pct = base === 0 ? 0 : Math.abs(d / base * 100);
+  const arrow = d > 0 ? "\u{1F53A}" : "\u{1F7E2}";
+  const sign = d > 0 ? "+" : "-";
+  return `${arrow} ${sign}${formatBytes(Math.abs(d))} (${sign}${pct.toFixed(1)}%)`;
 };
-var formatComment = (head, base, { baseLabel, runUrl, commentKey, stripHash, spreadToleranceBytes = 0 }) => {
+var formatComment = (head, base, {
+  baseLabel,
+  runUrl,
+  commentKey,
+  stripHash,
+  spreadToleranceBytes = 0,
+  minimumChangeThreshold = 1
+}) => {
   const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
   const fileOf = (url) => {
     const path = url.startsWith("blob:") ? "(blob)" : new URL(url).pathname;
@@ -31651,21 +31659,23 @@ var formatComment = (head, base, { baseLabel, runUrl, commentKey, stripHash, spr
       const hb = headFiles.get(f);
       const bb = baseFiles.get(f);
       return { f, hb, bb, delta: (hb ?? 0) - (bb ?? 0) };
-    }).filter(({ delta }) => delta !== 0).sort((a, z) => Math.abs(z.delta) - Math.abs(a.delta));
+    }).filter(
+      ({ delta }) => delta !== 0 && Math.abs(delta) >= minimumChangeThreshold
+    ).sort((a, z) => Math.abs(z.delta) - Math.abs(a.delta));
     const unchangedCount = all.length - changed.length;
     if (changed.length === 0) {
       return `
 <details><summary>${h.name}: no per-file changes (${unchangedCount} files identical)</summary></details>`;
     }
     const fileRows = changed.map(({ f, hb, bb }) => {
-      const deltaCell = bb === void 0 ? `\u{1F53A} +${formatBytes(hb)} (new)` : hb === void 0 ? `\u{1F7E2} ${formatBytes(bb)} saved (no longer loaded)` : formatDelta(hb, bb);
+      const deltaCell = bb === void 0 ? `\u{1F53A} +${formatBytes(hb)}` : hb === void 0 ? `\u{1F7E2} -${formatBytes(bb)}` : formatDelta(hb, bb, minimumChangeThreshold);
       const note = bb === void 0 ? " \u{1F195}" : hb === void 0 ? " \u{1F5D1}\uFE0F" : "";
       return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaCell} |`;
     });
     return `
 <details><summary>${h.name}: ${changed.length} file(s) changed, ${unchangedCount} identical</summary>
 
-| file | this PR | base | change |
+| file | PR | base | delta |
 | --- | --- | --- | --- |
 ${fileRows.join("\n")}
 </details>`;
@@ -31675,14 +31685,20 @@ ${fileRows.join("\n")}
     if (h.error) {
       return `| ${h.name} | \u26A0\uFE0F unable to measure - ${h.error} | | |`;
     }
-    const baseCell = b == null ? "\u2014" : b.error ? `\u26A0\uFE0F unable to measure - ${b.error}` : formatBytes(b.bytes);
-    const deltaCell = formatDelta(h.bytes, b?.error ? null : b?.bytes);
-    const ignoredNote = h.ignoredBytes > 0 ? `, ${formatBytes(h.ignoredBytes)} ignored` : "";
-    return `| ${h.name} | ${formatBytes(h.bytes)} (${h.requests} reqs, ${formatDuration(h.timeToMarkMs)} to mark${ignoredNote}) | ${baseCell} | ${deltaCell} |`;
+    const baseCell = b == null ? "\u2014" : b.error ? `\u26A0\uFE0F unable to measure - ${b.error}` : `${formatBytes(b.bytes)} ${formatDuration(b.timeToMarkMs)}`;
+    const deltaCell = formatDelta(
+      h.bytes,
+      b?.error ? null : b?.bytes,
+      minimumChangeThreshold
+    );
+    return `| ${h.name} | ${formatBytes(h.bytes)} ${formatDuration(h.timeToMarkMs)} | ${baseCell} | ${deltaCell} |`;
   });
   const totalHead = head.every((h) => !h.error) ? head.reduce((a, h) => a + h.bytes, 0) : null;
   const totalBase = base && base.every((b) => !b.error) ? base.reduce((a, b) => a + b.bytes, 0) : null;
-  const totalRow = totalHead != null ? `| **journey total** | **${formatBytes(totalHead)}** | ${totalBase != null ? `**${formatBytes(totalBase)}**` : "\u2014"} | ${formatDelta(totalHead, totalBase)} |` : "";
+  const totalRow = totalHead != null ? `| **total** | **${formatBytes(totalHead)}** | ${totalBase != null ? `**${formatBytes(totalBase)}**` : "\u2014"} | ${formatDelta(totalHead, totalBase, minimumChangeThreshold)} |` : "";
+  const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);
+  const ignoredNote = totalIgnored > 0 ? `
+<sub>${formatBytes(totalIgnored)} matched ignore-url-patterns and is not counted</sub>` : "";
   const duplicateNotes = head.filter((h) => !h.error).flatMap((h) => {
     const transfers = /* @__PURE__ */ new Map();
     for (const { url, bytes, ignored } of h.requestLog ?? []) {
@@ -31704,11 +31720,11 @@ ${fileRows.join("\n")}
 
 True wire bytes from cold cache until each scenario's \`performance.mark\`, network settled. Compared against ${baseLabel}.
 
-| scenario | this PR | base | change |
+| | PR | base | delta |
 | --- | --- | --- | --- |
 ${rows.join("\n")}
 ${totalRow}
-${spreadNote}${duplicateNotes}
+${spreadNote}${ignoredNote}${duplicateNotes}
 ${head.map((h) => detailsFor(h, base?.find((r) => r.name === h.name))).join("")}
 ${runUrl ? `
 <sub>\u{1F4CB} per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
@@ -32301,6 +32317,9 @@ var main = async () => {
     baseRef: input("base-ref", ""),
     commentKey: input("comment-key", ""),
     spreadToleranceBytes: Number(input("spread-tolerance-bytes", "512")),
+    // same name, semantics and default as compressed-size-action: changes
+    // below this many bytes display as unchanged
+    minimumChangeThreshold: Number(input("minimum-change-threshold", "1")),
     stripHash: input("strip-hash", "(-[a-zA-Z0-9_-]{8})\\.", {
       allowEmpty: true
     }),
@@ -32402,7 +32421,8 @@ var main = async () => {
     runUrl,
     commentKey: config.commentKey,
     stripHash: config.stripHash,
-    spreadToleranceBytes: config.spreadToleranceBytes
+    spreadToleranceBytes: config.spreadToleranceBytes,
+    minimumChangeThreshold: config.minimumChangeThreshold
   });
   console.log(body);
   const issueNumber = event.pull_request?.number;

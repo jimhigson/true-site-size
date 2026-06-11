@@ -7,16 +7,19 @@ import { formatBytes, formatDuration } from "./formatBytes.mjs";
 const markerFor = (commentKey) =>
   `<!-- true-site-size${commentKey ? `:${commentKey}` : ""} -->`;
 
-const formatDelta = (head, base) => {
+const formatDelta = (
+  head,
+  base,
+  /** changes smaller than this many bytes display as no-change */
+  minimumChangeThreshold,
+) => {
   if (head == null || base == null) return "—";
   const d = head - base;
-  const pct = base === 0 ? 0 : (d / base) * 100;
-  const arrow =
-    d > 0 ? "🔺"
-    : d < 0 ? "🟢"
-    : "✅";
-  const sign = d > 0 ? "+" : "";
-  return `${arrow} ${sign}${formatBytes(Math.abs(d))}${d < 0 ? " saved" : ""} (${sign}${pct.toFixed(1)}%)`;
+  if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "✅";
+  const pct = base === 0 ? 0 : Math.abs((d / base) * 100);
+  const arrow = d > 0 ? "🔺" : "🟢";
+  const sign = d > 0 ? "+" : "-";
+  return `${arrow} ${sign}${formatBytes(Math.abs(d))} (${sign}${pct.toFixed(1)}%)`;
 };
 
 /** build the markdown body for the PR comment */
@@ -26,7 +29,14 @@ export const formatComment = (
   /** per-scenario base results, or null when no base was measurable */
   base,
   /** { baseLabel } */
-  { baseLabel, runUrl, commentKey, stripHash, spreadToleranceBytes = 0 },
+  {
+    baseLabel,
+    runUrl,
+    commentKey,
+    stripHash,
+    spreadToleranceBytes = 0,
+    minimumChangeThreshold = 1,
+  },
 ) => {
   const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
   /** filename for matching across refs: pathname with the content hash removed */
@@ -57,7 +67,9 @@ export const formatComment = (
         const bb = baseFiles.get(f);
         return { f, hb, bb, delta: (hb ?? 0) - (bb ?? 0) };
       })
-      .filter(({ delta }) => delta !== 0)
+      .filter(
+        ({ delta }) => delta !== 0 && Math.abs(delta) >= minimumChangeThreshold,
+      )
       .sort((a, z) => Math.abs(z.delta) - Math.abs(a.delta));
     const unchangedCount = all.length - changed.length;
     if (changed.length === 0) {
@@ -65,16 +77,16 @@ export const formatComment = (
     }
     const fileRows = changed.map(({ f, hb, bb }) => {
       const deltaCell =
-        bb === undefined ? `🔺 +${formatBytes(hb)} (new)`
-        : hb === undefined ? `🟢 ${formatBytes(bb)} saved (no longer loaded)`
-        : formatDelta(hb, bb);
+        bb === undefined ? `🔺 +${formatBytes(hb)}`
+        : hb === undefined ? `🟢 -${formatBytes(bb)}`
+        : formatDelta(hb, bb, minimumChangeThreshold);
       const note =
         bb === undefined ? " 🆕"
         : hb === undefined ? " 🗑️"
         : "";
       return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaCell} |`;
     });
-    return `\n<details><summary>${h.name}: ${changed.length} file(s) changed, ${unchangedCount} identical</summary>\n\n| file | this PR | base | change |\n| --- | --- | --- | --- |\n${fileRows.join("\n")}\n</details>`;
+    return `\n<details><summary>${h.name}: ${changed.length} file(s) changed, ${unchangedCount} identical</summary>\n\n| file | PR | base | delta |\n| --- | --- | --- | --- |\n${fileRows.join("\n")}\n</details>`;
   };
   const rows = head.map((h) => {
     const b = base?.find((r) => r.name === h.name);
@@ -84,11 +96,13 @@ export const formatComment = (
     const baseCell =
       b == null ? "—"
       : b.error ? `⚠️ unable to measure - ${b.error}`
-      : formatBytes(b.bytes);
-    const deltaCell = formatDelta(h.bytes, b?.error ? null : b?.bytes);
-    const ignoredNote =
-      h.ignoredBytes > 0 ? `, ${formatBytes(h.ignoredBytes)} ignored` : "";
-    return `| ${h.name} | ${formatBytes(h.bytes)} (${h.requests} reqs, ${formatDuration(h.timeToMarkMs)} to mark${ignoredNote}) | ${baseCell} | ${deltaCell} |`;
+      : `${formatBytes(b.bytes)} ${formatDuration(b.timeToMarkMs)}`;
+    const deltaCell = formatDelta(
+      h.bytes,
+      b?.error ? null : b?.bytes,
+      minimumChangeThreshold,
+    );
+    return `| ${h.name} | ${formatBytes(h.bytes)} ${formatDuration(h.timeToMarkMs)} | ${baseCell} | ${deltaCell} |`;
   });
 
   const totalHead = head.every((h) => !h.error)
@@ -100,8 +114,14 @@ export const formatComment = (
       : null;
   const totalRow =
     totalHead != null
-      ? `| **journey total** | **${formatBytes(totalHead)}** | ${totalBase != null ? `**${formatBytes(totalBase)}**` : "—"} | ${formatDelta(totalHead, totalBase)} |`
+      ? `| **total** | **${formatBytes(totalHead)}** | ${totalBase != null ? `**${formatBytes(totalBase)}**` : "—"} | ${formatDelta(totalHead, totalBase, minimumChangeThreshold)} |`
       : "";
+
+  const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);
+  const ignoredNote =
+    totalIgnored > 0 ?
+      `\n<sub>${formatBytes(totalIgnored)} matched ignore-url-patterns and is not counted</sub>`
+    : "";
 
   // a url transferred in full more than once in a single row is a standing
   // bug in the measured app (eg the same asset fetched with mismatched
@@ -137,11 +157,11 @@ export const formatComment = (
 
 True wire bytes from cold cache until each scenario's \`performance.mark\`, network settled. Compared against ${baseLabel}.
 
-| scenario | this PR | base | change |
+| | PR | base | delta |
 | --- | --- | --- | --- |
 ${rows.join("\n")}
 ${totalRow}
-${spreadNote}${duplicateNotes}
+${spreadNote}${ignoredNote}${duplicateNotes}
 ${head.map((h) => detailsFor(h, base?.find((r) => r.name === h.name))).join("")}
 ${runUrl ? `\n<sub>📋 per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
 <sub>measured by [true-site-size](https://github.com/jimhigson/true-site-size)</sub>
