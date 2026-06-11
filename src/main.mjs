@@ -69,6 +69,7 @@ const main = async () => {
     settleMs: Number(input("settle-ms", "1500")),
     markTimeoutMs: Number(input("mark-timeout-ms", "60000")),
     baseRef: input("base-ref", ""),
+    commentKey: input("comment-key", ""),
     comment: input("comment", "true") === "true",
     token: input("github-token", process.env.GITHUB_TOKEN ?? ""),
   };
@@ -189,7 +190,11 @@ const main = async () => {
     process.env.GITHUB_RUN_ID ?
       `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
     : undefined;
-  const body = formatComment(head, base, { baseLabel, runUrl });
+  const body = formatComment(head, base, {
+    baseLabel,
+    runUrl,
+    commentKey: config.commentKey,
+  });
   console.log(body);
 
   const issueNumber = event.pull_request?.number;
@@ -198,6 +203,7 @@ const main = async () => {
       token: config.token,
       repo: process.env.GITHUB_REPOSITORY,
       issueNumber,
+      commentKey: config.commentKey,
       apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com",
     });
     console.log("[true-site-size] comment posted");

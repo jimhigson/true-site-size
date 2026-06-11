@@ -31618,7 +31618,7 @@ var formatDuration = (ms) => {
 };
 
 // src/comment.mjs
-var marker = "<!-- true-site-size -->";
+var markerFor = (commentKey) => `<!-- true-site-size${commentKey ? `:${commentKey}` : ""} -->`;
 var formatDelta = (head, base) => {
   if (head == null || base == null) return "\u2014";
   const d = head - base;
@@ -31627,13 +31627,13 @@ var formatDelta = (head, base) => {
   const sign = d > 0 ? "+" : "";
   return `${arrow} ${sign}${formatBytes(Math.abs(d))}${d < 0 ? " saved" : ""} (${sign}${pct.toFixed(1)}%)`;
 };
-var formatComment = (head, base, { baseLabel, runUrl }) => {
+var formatComment = (head, base, { baseLabel, runUrl, commentKey }) => {
   const rows = head.map((h) => {
     const b = base?.find((r) => r.name === h.name);
     if (h.error) {
-      return `| ${h.name} | \u26A0\uFE0F ${h.error} | | |`;
+      return `| ${h.name} | \u26A0\uFE0F unable to measure - ${h.error} | | |`;
     }
-    const baseCell = b == null ? "\u2014" : b.error ? `\u26A0\uFE0F no data` : formatBytes(b.bytes);
+    const baseCell = b == null ? "\u2014" : b.error ? `\u26A0\uFE0F unable to measure - ${b.error}` : formatBytes(b.bytes);
     const deltaCell = formatDelta(h.bytes, b?.error ? null : b?.bytes);
     const ignoredNote = h.ignoredBytes > 0 ? `, ${formatBytes(h.ignoredBytes)} ignored` : "";
     return `| ${h.name} | ${formatBytes(h.bytes)} (${h.requests} reqs, ${formatDuration(h.timeToMarkMs)} to mark${ignoredNote}) | ${baseCell} | ${deltaCell} |`;
@@ -31643,10 +31643,10 @@ var formatComment = (head, base, { baseLabel, runUrl }) => {
   const totalRow = totalHead != null ? `| **journey total** | **${formatBytes(totalHead)}** | ${totalBase != null ? `**${formatBytes(totalBase)}**` : "\u2014"} | ${formatDelta(totalHead, totalBase)} |` : "";
   const spreadNote = head.some((h) => h.bytesSpread > 0) ? `
 > \u26A0\uFE0F **determinism check failed**: repeat runs transferred different bytes (max spread ${formatBytes(Math.max(...head.map((h) => h.bytesSpread ?? 0)))}). Something loads non-deterministically - do not trust deltas until investigated. The per-request breakdown in the run logs shows which requests varied.` : "";
-  return `${marker}
-### \u{1F4E1} real network cost to ready
+  return `${markerFor(commentKey)}
+### \u{1F4E1} real network cost to ready${commentKey ? ` (${commentKey})` : ""}
 
-Minimum wire bytes from cold cache until each scenario's \`performance.mark\`, network settled. Compared against ${baseLabel}.
+True wire bytes from cold cache until each scenario's \`performance.mark\`, network settled. Compared against ${baseLabel}.
 
 | scenario | this PR | base | change |
 | --- | --- | --- | --- |
@@ -31658,7 +31658,8 @@ ${runUrl ? `
 <sub>measured by [true-site-size](https://github.com/jimhigson/true-site-size)</sub>
 `;
 };
-var postComment = async (body, { token, repo, issueNumber, apiUrl = "https://api.github.com" }) => {
+var postComment = async (body, { token, repo, issueNumber, commentKey, apiUrl = "https://api.github.com" }) => {
+  const marker = markerFor(commentKey);
   const headers = {
     authorization: `Bearer ${token}`,
     accept: "application/vnd.github+json",
@@ -32139,6 +32140,7 @@ var main = async () => {
     settleMs: Number(input("settle-ms", "1500")),
     markTimeoutMs: Number(input("mark-timeout-ms", "60000")),
     baseRef: input("base-ref", ""),
+    commentKey: input("comment-key", ""),
     comment: input("comment", "true") === "true",
     token: input("github-token", process.env.GITHUB_TOKEN ?? "")
   };
@@ -32226,7 +32228,11 @@ var main = async () => {
     }
   }
   const runUrl = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : void 0;
-  const body = formatComment(head, base, { baseLabel, runUrl });
+  const body = formatComment(head, base, {
+    baseLabel,
+    runUrl,
+    commentKey: config.commentKey
+  });
   console.log(body);
   const issueNumber = event.pull_request?.number;
   if (config.comment && issueNumber && config.token) {
@@ -32234,6 +32240,7 @@ var main = async () => {
       token: config.token,
       repo: process.env.GITHUB_REPOSITORY,
       issueNumber,
+      commentKey: config.commentKey,
       apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com"
     });
     console.log("[true-site-size] comment posted");

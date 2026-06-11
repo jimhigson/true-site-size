@@ -1,6 +1,11 @@
 import { formatBytes, formatDuration } from "./formatBytes.mjs";
 
-const marker = "<!-- true-site-size -->";
+/**
+ * each comment-key maintains its own comment on the pr, so one workflow can
+ * report several measurements (eg a game and an editor build)
+ */
+const markerFor = (commentKey) =>
+  `<!-- true-site-size${commentKey ? `:${commentKey}` : ""} -->`;
 
 const formatDelta = (head, base) => {
   if (head == null || base == null) return "—";
@@ -21,16 +26,16 @@ export const formatComment = (
   /** per-scenario base results, or null when no base was measurable */
   base,
   /** { baseLabel } */
-  { baseLabel, runUrl },
+  { baseLabel, runUrl, commentKey },
 ) => {
   const rows = head.map((h) => {
     const b = base?.find((r) => r.name === h.name);
     if (h.error) {
-      return `| ${h.name} | ⚠️ ${h.error} | | |`;
+      return `| ${h.name} | ⚠️ unable to measure - ${h.error} | | |`;
     }
     const baseCell =
       b == null ? "—"
-      : b.error ? `⚠️ no data`
+      : b.error ? `⚠️ unable to measure - ${b.error}`
       : formatBytes(b.bytes);
     const deltaCell = formatDelta(h.bytes, b?.error ? null : b?.bytes);
     const ignoredNote =
@@ -54,10 +59,10 @@ export const formatComment = (
     ? `\n> ⚠️ **determinism check failed**: repeat runs transferred different bytes (max spread ${formatBytes(Math.max(...head.map((h) => h.bytesSpread ?? 0)))}). Something loads non-deterministically - do not trust deltas until investigated. The per-request breakdown in the run logs shows which requests varied.`
     : "";
 
-  return `${marker}
-### 📡 real network cost to ready
+  return `${markerFor(commentKey)}
+### 📡 real network cost to ready${commentKey ? ` (${commentKey})` : ""}
 
-Minimum wire bytes from cold cache until each scenario's \`performance.mark\`, network settled. Compared against ${baseLabel}.
+True wire bytes from cold cache until each scenario's \`performance.mark\`, network settled. Compared against ${baseLabel}.
 
 | scenario | this PR | base | change |
 | --- | --- | --- | --- |
@@ -72,8 +77,9 @@ ${runUrl ? `\n<sub>📋 per-request breakdown (every url, size and timing) is in
 /** create or update the marker-identified comment on the PR */
 export const postComment = async (
   body,
-  { token, repo, issueNumber, apiUrl = "https://api.github.com" },
+  { token, repo, issueNumber, commentKey, apiUrl = "https://api.github.com" },
 ) => {
+  const marker = markerFor(commentKey);
   const headers = {
     authorization: `Bearer ${token}`,
     accept: "application/vnd.github+json",

@@ -66,6 +66,11 @@ inputs:
   comment:
     description: post/update a PR comment with the results
     default: "true"
+  comment-key:
+    description: >
+      distinguishes multiple uses on one PR - each key maintains its own
+      comment (and is shown in the comment heading)
+    default: ""
   github-token:
     description: token used to post the PR comment
     default: ${{ github.token }}
@@ -97,4 +102,5 @@ runs:
         INPUT_MARK_TIMEOUT_MS: ${{ inputs.mark-timeout-ms }}
         INPUT_BASE_REF: ${{ inputs.base-ref }}
         INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_COMMENT_KEY: ${{ inputs.comment-key }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
