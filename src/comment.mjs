@@ -26,7 +26,7 @@ export const formatComment = (
   /** per-scenario base results, or null when no base was measurable */
   base,
   /** { baseLabel } */
-  { baseLabel },
+  { baseLabel, runUrl },
 ) => {
   const rows = head.map((h) => {
     const b = base?.find((r) => r.name === h.name);
@@ -67,6 +67,7 @@ Minimum wire bytes from cold cache until each scenario's \`performance.mark\`, n
 ${rows.join("\n")}
 ${totalRow}
 ${spreadNote}
+${runUrl ? `\n<sub>📋 per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
 `;
 };
 

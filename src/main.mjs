@@ -67,9 +67,25 @@ const main = async () => {
 
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
 
+  const logBreakdown = (label, results) => {
+    for (const r of results) {
+      if (r.error) {
+        console.log(`[true-site-size] ${label} / ${r.name}: ${r.error}`);
+        continue;
+      }
+      console.log(
+        `[true-site-size] ${label} / ${r.name}: ${r.bytes} bytes over ${r.requests} requests, mark at ${r.timeToMarkMs}ms (per-request breakdown follows, largest first)`,
+      );
+      const sorted = [...(r.requestLog ?? [])].sort((a, b) => b.bytes - a.bytes);
+      for (const { url, bytes, atMs } of sorted) {
+        console.log(`  ${String(bytes).padStart(9)} B  at ${String(atMs).padStart(6)}ms  ${url}`);
+      }
+    }
+  };
+
   console.log("[true-site-size] measuring head...");
   const head = await buildAndMeasure(workspace, config);
-  console.log(JSON.stringify(head, null, 2));
+  logBreakdown("head", head);
 
   // resolve the ref to compare against: explicit base-ref input, else the
   // PR's base. Outside a PR (or with neither available) head is reported
@@ -93,7 +109,7 @@ const main = async () => {
     run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
     try {
       base = await buildAndMeasure(baseDir, config);
-      console.log(JSON.stringify(base, null, 2));
+      logBreakdown("base", base);
     } catch (e) {
       console.warn(
         `[true-site-size] base measurement failed (reporting head only): ${e.message}`,
@@ -103,7 +119,11 @@ const main = async () => {
     }
   }
 
-  const body = formatComment(head, base, { baseLabel });
+  const runUrl =
+    process.env.GITHUB_RUN_ID ?
+      `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+    : undefined;
+  const body = formatComment(head, base, { baseLabel, runUrl });
   console.log(body);
 
   const issueNumber = event.pull_request?.number;

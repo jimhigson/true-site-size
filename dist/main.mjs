@@ -31618,7 +31618,7 @@ var formatDelta = (head, base) => {
   const sign = d > 0 ? "+" : "";
   return `${arrow} ${sign}${formatBytes(Math.abs(d))}${d < 0 ? " saved" : ""} (${sign}${pct.toFixed(1)}%)`;
 };
-var formatComment = (head, base, { baseLabel }) => {
+var formatComment = (head, base, { baseLabel, runUrl }) => {
   const rows = head.map((h) => {
     const b = base?.find((r) => r.name === h.name);
     if (h.error) {
@@ -31643,6 +31643,8 @@ Minimum wire bytes from cold cache until each scenario's \`performance.mark\`, n
 ${rows.join("\n")}
 ${totalRow}
 ${spreadNote}
+${runUrl ? `
+<sub>\u{1F4CB} per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
 `;
 };
 var postComment = async (body, { token, repo, issueNumber, apiUrl = "https://api.github.com" }) => {
@@ -31876,7 +31878,8 @@ var measure = async (scenarios, { runs, settleMs, markTimeoutMs }) => {
       bytesSpread: max - min,
       requests: best.requests,
       failedRequests: best.failedRequests,
-      timeToMarkMs: Math.min(...ok.map((r) => r.timeToMarkMs))
+      timeToMarkMs: Math.min(...ok.map((r) => r.timeToMarkMs)),
+      requestLog: best.requestLog
     };
   });
 };
@@ -32007,9 +32010,24 @@ var main = async () => {
     throw new Error("no scenarios configured - set the `scenarios` input");
   }
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
+  const logBreakdown = (label, results) => {
+    for (const r of results) {
+      if (r.error) {
+        console.log(`[true-site-size] ${label} / ${r.name}: ${r.error}`);
+        continue;
+      }
+      console.log(
+        `[true-site-size] ${label} / ${r.name}: ${r.bytes} bytes over ${r.requests} requests, mark at ${r.timeToMarkMs}ms (per-request breakdown follows, largest first)`
+      );
+      const sorted = [...r.requestLog ?? []].sort((a, b) => b.bytes - a.bytes);
+      for (const { url, bytes, atMs } of sorted) {
+        console.log(`  ${String(bytes).padStart(9)} B  at ${String(atMs).padStart(6)}ms  ${url}`);
+      }
+    }
+  };
   console.log("[true-site-size] measuring head...");
   const head = await buildAndMeasure(workspace, config);
-  console.log(JSON.stringify(head, null, 2));
+  logBreakdown("head", head);
   const eventPath = process.env.GITHUB_EVENT_PATH;
   const event = eventPath && existsSync3(eventPath) ? JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(eventPath, "utf8"))) : {};
   const prBase = event.pull_request?.base?.ref;
@@ -32025,7 +32043,7 @@ var main = async () => {
     run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
     try {
       base = await buildAndMeasure(baseDir, config);
-      console.log(JSON.stringify(base, null, 2));
+      logBreakdown("base", base);
     } catch (e) {
       console.warn(
         `[true-site-size] base measurement failed (reporting head only): ${e.message}`
@@ -32034,7 +32052,8 @@ var main = async () => {
       run(`git worktree remove --force ${baseDir}`, workspace);
     }
   }
-  const body = formatComment(head, base, { baseLabel });
+  const runUrl = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : void 0;
+  const body = formatComment(head, base, { baseLabel, runUrl });
   console.log(body);
   const issueNumber = event.pull_request?.number;
   if (config.comment && issueNumber && config.token) {
