@@ -31683,6 +31683,17 @@ ${fileRows.join("\n")}
   const totalHead = head.every((h) => !h.error) ? head.reduce((a, h) => a + h.bytes, 0) : null;
   const totalBase = base && base.every((b) => !b.error) ? base.reduce((a, b) => a + b.bytes, 0) : null;
   const totalRow = totalHead != null ? `| **journey total** | **${formatBytes(totalHead)}** | ${totalBase != null ? `**${formatBytes(totalBase)}**` : "\u2014"} | ${formatDelta(totalHead, totalBase)} |` : "";
+  const duplicateNotes = head.filter((h) => !h.error).flatMap((h) => {
+    const counts = /* @__PURE__ */ new Map();
+    for (const { url, bytes, ignored } of h.requestLog ?? []) {
+      if (ignored || bytes === 0) continue;
+      counts.set(url, (counts.get(url) ?? 0) + 1);
+    }
+    return [...counts].filter(([, n]) => n > 1).map(
+      ([url, n]) => `
+> \u{1F501} **${h.name}** downloads \`${new URL(url).pathname}\` ${n} times in full - likely uncoalesced duplicate requests (eg crossorigin mismatch)`
+    );
+  }).join("");
   const spreadNote = head.some((h) => h.bytesSpread > 0) ? `
 > \u26A0\uFE0F **determinism check failed**: repeat runs transferred different bytes (max spread ${formatBytes(Math.max(...head.map((h) => h.bytesSpread ?? 0)))}). Something loads non-deterministically - do not trust deltas until investigated. The per-request breakdown in the run logs shows which requests varied.` : "";
   return `${markerFor(commentKey)}
@@ -31694,7 +31705,7 @@ True wire bytes from cold cache until each scenario's \`performance.mark\`, netw
 | --- | --- | --- | --- |
 ${rows.join("\n")}
 ${totalRow}
-${spreadNote}
+${spreadNote}${duplicateNotes}
 ${head.map((h) => detailsFor(h, base?.find((r) => r.name === h.name))).join("")}
 ${runUrl ? `
 <sub>\u{1F4CB} per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}

@@ -103,6 +103,26 @@ export const formatComment = (
       ? `| **journey total** | **${formatBytes(totalHead)}** | ${totalBase != null ? `**${formatBytes(totalBase)}**` : "—"} | ${formatDelta(totalHead, totalBase)} |`
       : "";
 
+  // a url transferred in full more than once in a single row is a standing
+  // bug in the measured app (eg the same asset fetched with mismatched
+  // crossorigin modes, defeating request coalescing)
+  const duplicateNotes = head
+    .filter((h) => !h.error)
+    .flatMap((h) => {
+      const counts = new Map();
+      for (const { url, bytes, ignored } of h.requestLog ?? []) {
+        if (ignored || bytes === 0) continue;
+        counts.set(url, (counts.get(url) ?? 0) + 1);
+      }
+      return [...counts]
+        .filter(([, n]) => n > 1)
+        .map(
+          ([url, n]) =>
+            `\n> 🔁 **${h.name}** downloads \`${new URL(url).pathname}\` ${n} times in full - likely uncoalesced duplicate requests (eg crossorigin mismatch)`,
+        );
+    })
+    .join("");
+
   const spreadNote = head.some((h) => h.bytesSpread > 0)
     ? `\n> ⚠️ **determinism check failed**: repeat runs transferred different bytes (max spread ${formatBytes(Math.max(...head.map((h) => h.bytesSpread ?? 0)))}). Something loads non-deterministically - do not trust deltas until investigated. The per-request breakdown in the run logs shows which requests varied.`
     : "";
@@ -116,7 +136,7 @@ True wire bytes from cold cache until each scenario's \`performance.mark\`, netw
 | --- | --- | --- | --- |
 ${rows.join("\n")}
 ${totalRow}
-${spreadNote}
+${spreadNote}${duplicateNotes}
 ${head.map((h) => detailsFor(h, base?.find((r) => r.name === h.name))).join("")}
 ${runUrl ? `\n<sub>📋 per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
 <sub>measured by [true-site-size](https://github.com/jimhigson/true-site-size)</sub>
