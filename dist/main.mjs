@@ -31718,7 +31718,7 @@ ${fileRows.join("\n")}
   return `${markerFor(commentKey)}
 ### \u{1F4E1} real network cost to ready${commentKey ? ` (${commentKey})` : ""}
 
-True wire bytes from cold cache until each scenario's \`performance.mark\`, network settled. Compared against ${baseLabel}.
+True wire bytes from cold cache to \`performance.mark\`, network settled. Base is ${baseLabel}.
 
 | | PR | base | delta |
 | --- | --- | --- | --- |
