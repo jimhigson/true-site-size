@@ -65,6 +65,8 @@ const main = async () => {
     compression: input("compression", "gzip"),
     runs: Number(input("runs", "2")),
     stepTimeoutMs: Number(input("step-timeout-ms", "20000")),
+    settleTimeoutMs: Number(input("settle-timeout-ms", "30000")),
+    timeoutMs: Number(input("timeout-ms", "900000")),
     ignorePatterns: JSON.parse(input("ignore-url-patterns", "[]")),
     settleMs: Number(input("settle-ms", "1500")),
     markTimeoutMs: Number(input("mark-timeout-ms", "60000")),
@@ -78,6 +80,16 @@ const main = async () => {
       "nothing to measure - set the `journey` or `scenarios` input",
     );
   }
+
+  // whole-process watchdog: the individual waits are all capped, but this
+  // guarantees that nothing - including bugs in this action - can hang a ci
+  // job indefinitely
+  setTimeout(() => {
+    console.error(
+      `[true-site-size] hard timeout: the whole action did not finish within ${config.timeoutMs}ms (timeout-ms input) - failing rather than hanging`,
+    );
+    process.exit(1);
+  }, config.timeoutMs);
 
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
 

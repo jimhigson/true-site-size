@@ -114,11 +114,11 @@ const keyDefs = {
  */
 export const runJourney = async (
   steps,
-  { settleMs, markTimeoutMs, stepTimeoutMs, ignorePatterns },
+  { settleMs, markTimeoutMs, stepTimeoutMs, settleTimeoutMs, ignorePatterns },
 ) => {
   const chrome = await launchChrome();
   const client = await CDP({ port: chrome.port });
-  const { Network, Page, Runtime, Input } = client;
+  const { Network, Page, Runtime, Input, Target } = client;
   const results = [];
   const ignoreRes = (ignorePatterns ?? []).map((p) => new RegExp(p));
 
@@ -127,6 +127,37 @@ export const runJourney = async (
     await Network.setBypassServiceWorker({ bypass: true });
     await Page.enable();
     await Runtime.enable();
+    // workers are separate cdp targets: without attaching, a worker script's
+    // loadingFinished never reaches the page session (the request looks
+    // in-flight forever) and bytes the worker fetches go uncounted. Attach
+    // flat so worker-session Network events flow through the same connection
+    // waitForDebuggerOnStart pauses each worker until Network is enabled on
+    // its session, so the worker's own script fetch and sub-fetches are
+    // captured rather than lost in the attach race
+    await Target.setAutoAttach({
+      autoAttach: true,
+      waitForDebuggerOnStart: true,
+      flatten: true,
+    });
+    client.on("Target.attachedToTarget", async ({ sessionId, targetInfo }) => {
+      // the page session reports a requestWillBeSent for the worker script
+      // but never a completion (that belongs to the worker session) - drop
+      // the phantom so it cannot block settling; the worker session counts
+      // the script's bytes itself
+      for (const [key, entry] of inflight) {
+        if (entry.url === targetInfo.url) {
+          inflight.delete(key);
+        }
+      }
+      try {
+        await client.send("Network.enable", {}, sessionId);
+      } catch {
+        // target may already be gone
+      }
+      client
+        .send("Runtime.runIfWaitingForDebugger", {}, sessionId)
+        .catch(() => {});
+    });
     // bypassing only stops an active worker serving requests - registration
     // would still install one whose background precache warms the http cache
     // and silently absorbs page bytes. Disable registration outright so the
@@ -146,45 +177,98 @@ export const runJourney = async (
     let lastActivity = Date.now();
     let segmentStart = Date.now();
     let requestLog = [];
-    const inflight = new Set();
-    const urlOf = new Map();
+    /** key -> { url, responded, dataBytes } */
+    const inflight = new Map();
 
     const isIgnored = (url) => ignoreRes.some((re) => re.test(url));
 
-    Network.requestWillBeSent(({ requestId, request }) => {
-      if (request.url.startsWith("data:")) return;
-      inflight.add(requestId);
-      urlOf.set(requestId, request.url);
-      lastActivity = Date.now();
-    });
-    Network.loadingFinished(({ requestId, encodedDataLength }) => {
-      if (!inflight.has(requestId)) return;
-      inflight.delete(requestId);
-      const url = urlOf.get(requestId);
+    // network events arrive from the page session and any attached worker
+    // sessions; requestIds are only unique per session, so key on both
+    const keyOf = (sessionId, requestId) => `${sessionId ?? "page"}:${requestId}`;
+
+    const countAs = (url, byteCount, note) => {
       const ignored = isIgnored(url);
       if (ignored) {
-        ignoredBytes += encodedDataLength;
+        ignoredBytes += byteCount;
       } else {
-        bytes += encodedDataLength;
+        bytes += byteCount;
         requests += 1;
       }
       requestLog.push({
         url,
-        bytes: encodedDataLength,
+        bytes: byteCount,
         atMs: Date.now() - segmentStart,
         ...(ignored && { ignored: true }),
+        ...(note && { note }),
+      });
+    };
+
+    const onRequestWillBeSent = ({ requestId, request }, sessionId) => {
+      if (request.url.startsWith("data:")) return;
+      const key = keyOf(sessionId, requestId);
+      inflight.set(key, {
+        url: request.url,
+        responded: false,
+        dataBytes: 0,
       });
       lastActivity = Date.now();
-    });
-    Network.loadingFailed(({ requestId }) => {
-      if (!inflight.has(requestId)) return;
-      inflight.delete(requestId);
+    };
+    const onLoadingFinished = ({ requestId, encodedDataLength }, sessionId) => {
+      const key = keyOf(sessionId, requestId);
+      const entry = inflight.get(key);
+      if (!entry) return;
+      inflight.delete(key);
+      countAs(entry.url, encodedDataLength);
+      lastActivity = Date.now();
+    };
+    const onLoadingFailed = ({ requestId }, sessionId) => {
+      const key = keyOf(sessionId, requestId);
+      if (!inflight.has(key)) return;
+      inflight.delete(key);
       failed += 1;
       lastActivity = Date.now();
+    };
+
+    client.on("event", ({ method, params, sessionId }) => {
+      if (method === "Network.requestWillBeSent") {
+        onRequestWillBeSent(params, sessionId);
+      } else if (method === "Network.loadingFinished") {
+        onLoadingFinished(params, sessionId);
+      } else if (method === "Network.loadingFailed") {
+        onLoadingFailed(params, sessionId);
+      } else if (method === "Network.responseReceived") {
+        const entry = inflight.get(keyOf(sessionId, params.requestId));
+        if (entry) {
+          entry.responded = true;
+          entry.dataBytes += params.response?.encodedDataLength ?? 0;
+        }
+        lastActivity = Date.now();
+      } else if (method === "Network.dataReceived") {
+        const entry = inflight.get(keyOf(sessionId, params.requestId));
+        if (entry) {
+          entry.dataBytes += params.encodedDataLength ?? 0;
+        }
+        lastActivity = Date.now();
+      } else if (method === "Network.requestServedFromCache") {
+        lastActivity = Date.now();
+      }
     });
-    Network.requestServedFromCache(() => {
-      lastActivity = Date.now();
-    });
+
+    /**
+     * a request that has received its full response but never emits
+     * loadingFinished - eg a dedicated worker's script, whose completion
+     * event is lost between cdp targets - would otherwise block settling
+     * forever. Once such requests have been quiet for the settle window,
+     * count them using the bytes observed via dataReceived
+     */
+    const drainZombies = () => {
+      for (const [key, entry] of inflight) {
+        if (entry.responded) {
+          inflight.delete(key);
+          countAs(entry.url, entry.dataBytes, "no loadingFinished event");
+        }
+      }
+    };
 
     const resetSegment = () => {
       bytes = 0;
@@ -214,9 +298,32 @@ export const runJourney = async (
     };
 
     const waitForSettle = async () => {
+      const start = Date.now();
       for (;;) {
-        if (inflight.size === 0 && Date.now() - lastActivity >= settleMs) {
+        const quiet = Date.now() - lastActivity >= settleMs;
+        if (inflight.size === 0 && quiet) {
           return;
+        }
+        // only zombie requests left (responded, no completion event) and the
+        // network has been quiet: account for them and finish
+        if (
+          quiet &&
+          [...inflight.values()].every((entry) => entry.responded)
+        ) {
+          drainZombies();
+          if (inflight.size === 0) return;
+        }
+        if (Date.now() - start > settleTimeoutMs) {
+          // diagnose rather than hang: name what is keeping the network busy
+          const stuck = [...inflight.values()].map((entry) => entry.url);
+          const recent = requestLog
+            .slice(-5)
+            .map(({ url, atMs }) => `${url} (at ${atMs}ms)`);
+          throw new Error(
+            `network never settled within ${settleTimeoutMs}ms. ` +
+              (stuck.length ? `in-flight: ${stuck.join(", ")}. ` : "") +
+              (recent.length ? `most recent requests: ${recent.join(", ")}` : ""),
+          );
         }
         await sleep(50);
       }
@@ -351,7 +458,7 @@ export const runJourney = async (
  */
 export const measure = async (
   steps,
-  { runs, settleMs, markTimeoutMs, stepTimeoutMs, ignorePatterns },
+  { runs, settleMs, markTimeoutMs, stepTimeoutMs, settleTimeoutMs, ignorePatterns },
 ) => {
   const allRuns = [];
   for (let i = 0; i < runs; i++) {
@@ -360,6 +467,7 @@ export const measure = async (
         settleMs,
         markTimeoutMs,
         stepTimeoutMs,
+        settleTimeoutMs,
         ignorePatterns,
       }),
     );

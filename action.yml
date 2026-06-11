@@ -28,6 +28,17 @@ inputs:
   step-timeout-ms:
     description: per-step timeout, eg waiting for a click target to appear
     default: "20000"
+  settle-timeout-ms:
+    description: >
+      hard cap on waiting for the network to go quiet after a mark - if the
+      app never stops requesting (eg endless polling), the row errors with the
+      in-flight urls named rather than hanging
+    default: "30000"
+  timeout-ms:
+    description: >
+      hard cap on the entire action (builds and all measurement runs) - a
+      last-resort guard so nothing can hang a ci job indefinitely
+    default: "900000"
   scenarios:
     description: >
       simple form of `journey`: JSON array like
@@ -93,6 +104,8 @@ runs:
         INPUT_JOURNEY: ${{ inputs.journey }}
         INPUT_IGNORE_URL_PATTERNS: ${{ inputs.ignore-url-patterns }}
         INPUT_STEP_TIMEOUT_MS: ${{ inputs.step-timeout-ms }}
+        INPUT_SETTLE_TIMEOUT_MS: ${{ inputs.settle-timeout-ms }}
+        INPUT_TIMEOUT_MS: ${{ inputs.timeout-ms }}
         INPUT_INSTALL_COMMAND: ${{ inputs.install-command }}
         INPUT_BUILD_COMMAND: ${{ inputs.build-command }}
         INPUT_SERVE_DIR: ${{ inputs.serve-dir }}

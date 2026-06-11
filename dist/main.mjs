@@ -31777,10 +31777,10 @@ var keyDefs = {
     windowsVirtualKeyCode: 39
   }
 };
-var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, ignorePatterns }) => {
+var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, settleTimeoutMs, ignorePatterns }) => {
   const chrome = await launchChrome();
   const client = await (0, import_chrome_remote_interface.default)({ port: chrome.port });
-  const { Network, Page, Runtime, Input } = client;
+  const { Network, Page, Runtime, Input, Target } = client;
   const results = [];
   const ignoreRes = (ignorePatterns ?? []).map((p) => new RegExp(p));
   try {
@@ -31788,6 +31788,24 @@ var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, ignoreP
     await Network.setBypassServiceWorker({ bypass: true });
     await Page.enable();
     await Runtime.enable();
+    await Target.setAutoAttach({
+      autoAttach: true,
+      waitForDebuggerOnStart: true,
+      flatten: true
+    });
+    client.on("Target.attachedToTarget", async ({ sessionId, targetInfo }) => {
+      for (const [key, entry] of inflight) {
+        if (entry.url === targetInfo.url) {
+          inflight.delete(key);
+        }
+      }
+      try {
+        await client.send("Network.enable", {}, sessionId);
+      } catch {
+      }
+      client.send("Runtime.runIfWaitingForDebugger", {}, sessionId).catch(() => {
+      });
+    });
     await Page.addScriptToEvaluateOnNewDocument({
       source: `if (navigator.serviceWorker) {
         navigator.serviceWorker.register = () =>
@@ -31801,43 +31819,82 @@ var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, ignoreP
     let lastActivity = Date.now();
     let segmentStart = Date.now();
     let requestLog = [];
-    const inflight = /* @__PURE__ */ new Set();
-    const urlOf = /* @__PURE__ */ new Map();
+    const inflight = /* @__PURE__ */ new Map();
     const isIgnored = (url) => ignoreRes.some((re) => re.test(url));
-    Network.requestWillBeSent(({ requestId, request }) => {
-      if (request.url.startsWith("data:")) return;
-      inflight.add(requestId);
-      urlOf.set(requestId, request.url);
-      lastActivity = Date.now();
-    });
-    Network.loadingFinished(({ requestId, encodedDataLength }) => {
-      if (!inflight.has(requestId)) return;
-      inflight.delete(requestId);
-      const url = urlOf.get(requestId);
+    const keyOf = (sessionId, requestId) => `${sessionId ?? "page"}:${requestId}`;
+    const countAs = (url, byteCount, note) => {
       const ignored = isIgnored(url);
       if (ignored) {
-        ignoredBytes += encodedDataLength;
+        ignoredBytes += byteCount;
       } else {
-        bytes += encodedDataLength;
+        bytes += byteCount;
         requests += 1;
       }
       requestLog.push({
         url,
-        bytes: encodedDataLength,
+        bytes: byteCount,
         atMs: Date.now() - segmentStart,
-        ...ignored && { ignored: true }
+        ...ignored && { ignored: true },
+        ...note && { note }
+      });
+    };
+    const onRequestWillBeSent = ({ requestId, request }, sessionId) => {
+      if (request.url.startsWith("data:")) return;
+      const key = keyOf(sessionId, requestId);
+      inflight.set(key, {
+        url: request.url,
+        responded: false,
+        dataBytes: 0
       });
       lastActivity = Date.now();
-    });
-    Network.loadingFailed(({ requestId }) => {
-      if (!inflight.has(requestId)) return;
-      inflight.delete(requestId);
+    };
+    const onLoadingFinished = ({ requestId, encodedDataLength }, sessionId) => {
+      const key = keyOf(sessionId, requestId);
+      const entry = inflight.get(key);
+      if (!entry) return;
+      inflight.delete(key);
+      countAs(entry.url, encodedDataLength);
+      lastActivity = Date.now();
+    };
+    const onLoadingFailed = ({ requestId }, sessionId) => {
+      const key = keyOf(sessionId, requestId);
+      if (!inflight.has(key)) return;
+      inflight.delete(key);
       failed += 1;
       lastActivity = Date.now();
+    };
+    client.on("event", ({ method, params, sessionId }) => {
+      if (method === "Network.requestWillBeSent") {
+        onRequestWillBeSent(params, sessionId);
+      } else if (method === "Network.loadingFinished") {
+        onLoadingFinished(params, sessionId);
+      } else if (method === "Network.loadingFailed") {
+        onLoadingFailed(params, sessionId);
+      } else if (method === "Network.responseReceived") {
+        const entry = inflight.get(keyOf(sessionId, params.requestId));
+        if (entry) {
+          entry.responded = true;
+          entry.dataBytes += params.response?.encodedDataLength ?? 0;
+        }
+        lastActivity = Date.now();
+      } else if (method === "Network.dataReceived") {
+        const entry = inflight.get(keyOf(sessionId, params.requestId));
+        if (entry) {
+          entry.dataBytes += params.encodedDataLength ?? 0;
+        }
+        lastActivity = Date.now();
+      } else if (method === "Network.requestServedFromCache") {
+        lastActivity = Date.now();
+      }
     });
-    Network.requestServedFromCache(() => {
-      lastActivity = Date.now();
-    });
+    const drainZombies = () => {
+      for (const [key, entry] of inflight) {
+        if (entry.responded) {
+          inflight.delete(key);
+          countAs(entry.url, entry.dataBytes, "no loadingFinished event");
+        }
+      }
+    };
     const resetSegment = () => {
       bytes = 0;
       requests = 0;
@@ -31864,9 +31921,22 @@ var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, ignoreP
       }
     };
     const waitForSettle = async () => {
+      const start = Date.now();
       for (; ; ) {
-        if (inflight.size === 0 && Date.now() - lastActivity >= settleMs) {
+        const quiet = Date.now() - lastActivity >= settleMs;
+        if (inflight.size === 0 && quiet) {
           return;
+        }
+        if (quiet && [...inflight.values()].every((entry) => entry.responded)) {
+          drainZombies();
+          if (inflight.size === 0) return;
+        }
+        if (Date.now() - start > settleTimeoutMs) {
+          const stuck = [...inflight.values()].map((entry) => entry.url);
+          const recent = requestLog.slice(-5).map(({ url, atMs }) => `${url} (at ${atMs}ms)`);
+          throw new Error(
+            `network never settled within ${settleTimeoutMs}ms. ` + (stuck.length ? `in-flight: ${stuck.join(", ")}. ` : "") + (recent.length ? `most recent requests: ${recent.join(", ")}` : "")
+          );
         }
         await sleep(50);
       }
@@ -31983,7 +32053,7 @@ var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, ignoreP
   }
   return results;
 };
-var measure = async (steps, { runs, settleMs, markTimeoutMs, stepTimeoutMs, ignorePatterns }) => {
+var measure = async (steps, { runs, settleMs, markTimeoutMs, stepTimeoutMs, settleTimeoutMs, ignorePatterns }) => {
   const allRuns = [];
   for (let i = 0; i < runs; i++) {
     allRuns.push(
@@ -31991,6 +32061,7 @@ var measure = async (steps, { runs, settleMs, markTimeoutMs, stepTimeoutMs, igno
         settleMs,
         markTimeoutMs,
         stepTimeoutMs,
+        settleTimeoutMs,
         ignorePatterns
       })
     );
@@ -32136,6 +32207,8 @@ var main = async () => {
     compression: input("compression", "gzip"),
     runs: Number(input("runs", "2")),
     stepTimeoutMs: Number(input("step-timeout-ms", "20000")),
+    settleTimeoutMs: Number(input("settle-timeout-ms", "30000")),
+    timeoutMs: Number(input("timeout-ms", "900000")),
     ignorePatterns: JSON.parse(input("ignore-url-patterns", "[]")),
     settleMs: Number(input("settle-ms", "1500")),
     markTimeoutMs: Number(input("mark-timeout-ms", "60000")),
@@ -32149,6 +32222,12 @@ var main = async () => {
       "nothing to measure - set the `journey` or `scenarios` input"
     );
   }
+  setTimeout(() => {
+    console.error(
+      `[true-site-size] hard timeout: the whole action did not finish within ${config.timeoutMs}ms (timeout-ms input) - failing rather than hanging`
+    );
+    process.exit(1);
+  }, config.timeoutMs);
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
   const logBreakdown = (label, results) => {
     for (const r of results) {
