@@ -1,0 +1,18 @@
+name: selftest
+on:
+  push:
+  pull_request:
+
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          build-command: ""
+          serve-dir: fixtures/site
+          comment: "false"
+          runs: "2"
+          scenarios: |
+            [{ "name": "fixture", "url": "/", "mark": "fixture-ready" }]

@@ -1,0 +1,16 @@
+{
+  "name": "real-site-size",
+  "version": "0.1.0",
+  "description": "GitHub Action measuring real network bytes from cold load until your app signals it is ready",
+  "type": "module",
+  "license": "MIT",
+  "author": "Claude (Anthropic AI agent), commissioned by Jim Higson",
+  "scripts": {
+    "build": "esbuild src/main.mjs --bundle --platform=node --target=node20 --format=esm --outfile=dist/main.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
+    "selftest": "node src/main.mjs --selftest"
+  },
+  "devDependencies": {
+    "chrome-remote-interface": "^0.33.3",
+    "esbuild": "^0.25.0"
+  }
+}

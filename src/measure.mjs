@@ -1,0 +1,217 @@
+import CDP from "chrome-remote-interface";
+import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const chromeCandidates = [
+  process.env.CHROME_PATH,
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/chromium-browser",
+  "/usr/bin/chromium",
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+].filter(Boolean);
+
+export const findChrome = () => {
+  const found = chromeCandidates.find((c) => existsSync(c));
+  if (!found) {
+    throw new Error(
+      `no Chrome found - set CHROME_PATH. Tried: ${chromeCandidates.join(", ")}`,
+    );
+  }
+  return found;
+};
+
+const launchChrome = async () => {
+  const userDataDir = mkdtempSync(join(tmpdir(), "real-site-size-"));
+  const child = spawn(
+    findChrome(),
+    [
+      "--headless=new",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${userDataDir}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-extensions",
+      "--disable-background-networking",
+      "--disable-component-update",
+      "--disable-sync",
+      "--metrics-recording-only",
+      "--mute-audio",
+      // external hosts resolve to nothing: measurements stay deterministic
+      // and only the local server contributes bytes
+      "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost",
+      "about:blank",
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+  const port = await new Promise((resolve, reject) => {
+    let stderr = "";
+    const timer = setTimeout(
+      () => reject(new Error(`chrome did not start: ${stderr}`)),
+      20_000,
+    );
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+      const m = stderr.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//);
+      if (m) {
+        clearTimeout(timer);
+        resolve(Number(m[1]));
+      }
+    });
+    child.on("exit", () => reject(new Error(`chrome exited early: ${stderr}`)));
+  });
+  return {
+    port,
+    close: () => {
+      child.kill();
+      rmSync(userDataDir, { recursive: true, force: true });
+    },
+  };
+};
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Run all scenarios once, in order, in a single browser session (so the http
+ * cache carries between scenarios and each reports only its incremental
+ * bytes). Returns per-scenario results.
+ */
+export const runScenarios = async (
+  /** array of { name, url, mark } */
+  scenarios,
+  /** { settleMs, markTimeoutMs } */
+  { settleMs, markTimeoutMs },
+) => {
+  const chrome = await launchChrome();
+  const client = await CDP({ port: chrome.port });
+  const { Network, Page, Runtime } = client;
+  const results = [];
+
+  try {
+    await Network.enable({});
+    await Network.setBypassServiceWorker({ bypass: true });
+    await Page.enable();
+    await Runtime.enable();
+
+    // network accounting - reset per scenario
+    let bytes = 0;
+    let requests = 0;
+    let failed = 0;
+    let lastActivity = Date.now();
+    const inflight = new Set();
+
+    Network.requestWillBeSent(({ requestId, request }) => {
+      if (request.url.startsWith("data:")) return;
+      inflight.add(requestId);
+      lastActivity = Date.now();
+    });
+    Network.loadingFinished(({ requestId, encodedDataLength }) => {
+      if (!inflight.has(requestId)) return;
+      inflight.delete(requestId);
+      bytes += encodedDataLength;
+      requests += 1;
+      lastActivity = Date.now();
+    });
+    Network.loadingFailed(({ requestId }) => {
+      if (!inflight.has(requestId)) return;
+      inflight.delete(requestId);
+      failed += 1;
+      lastActivity = Date.now();
+    });
+    Network.requestServedFromCache(() => {
+      lastActivity = Date.now();
+    });
+
+    for (const scenario of scenarios) {
+      bytes = 0;
+      requests = 0;
+      failed = 0;
+      inflight.clear();
+
+      const navStart = Date.now();
+      await Page.navigate({ url: scenario.url });
+
+      // wait for the app's performance mark
+      let markTime;
+      for (;;) {
+        const { result } = await Runtime.evaluate({
+          expression: `performance.getEntriesByName(${JSON.stringify(scenario.mark)}, "mark")[0]?.startTime ?? null`,
+          returnByValue: true,
+        });
+        if (result.value !== null && result.value !== undefined) {
+          markTime = result.value;
+          break;
+        }
+        if (Date.now() - navStart > markTimeoutMs) {
+          markTime = null;
+          break;
+        }
+        await sleep(50);
+      }
+
+      if (markTime === null) {
+        results.push({
+          name: scenario.name,
+          error: `mark "${scenario.mark}" not seen within ${markTimeoutMs}ms`,
+        });
+        continue;
+      }
+
+      // settle: wait until nothing is in flight and the network has been
+      // quiet for settleMs
+      for (;;) {
+        if (inflight.size === 0 && Date.now() - lastActivity >= settleMs) {
+          break;
+        }
+        await sleep(50);
+      }
+
+      results.push({
+        name: scenario.name,
+        bytes,
+        requests,
+        failedRequests: failed,
+        timeToMarkMs: Math.round(markTime),
+      });
+    }
+  } finally {
+    await client.close().catch(() => {});
+    chrome.close();
+  }
+  return results;
+};
+
+/**
+ * Run the full scenario sequence `runs` times in fresh browser profiles and
+ * report, per scenario, the minimum bytes across runs (the deterministic
+ * critical-path payload) plus the spread for flagging instability.
+ */
+export const measure = async (scenarios, { runs, settleMs, markTimeoutMs }) => {
+  const allRuns = [];
+  for (let i = 0; i < runs; i++) {
+    allRuns.push(await runScenarios(scenarios, { settleMs, markTimeoutMs }));
+  }
+  return scenarios.map((scenario, i) => {
+    const runsFor = allRuns.map((run) => run[i]);
+    const errored = runsFor.find((r) => r.error);
+    const ok = runsFor.filter((r) => !r.error);
+    if (ok.length === 0) {
+      return { name: scenario.name, error: errored.error };
+    }
+    const bytesValues = ok.map((r) => r.bytes);
+    const min = Math.min(...bytesValues);
+    const max = Math.max(...bytesValues);
+    const best = ok.find((r) => r.bytes === min);
+    return {
+      name: scenario.name,
+      bytes: min,
+      bytesSpread: max - min,
+      requests: best.requests,
+      failedRequests: best.failedRequests,
+      timeToMarkMs: Math.min(...ok.map((r) => r.timeToMarkMs)),
+    };
+  });
+};

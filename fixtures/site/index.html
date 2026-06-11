@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>real-site-size fixture</title>
+  </head>
+  <body>
+    <h1>fixture</h1>
+    <script type="module">
+      // a lazy chunk plus an asset fetch, then the readiness mark - mimics an
+      // app that loads its world before becoming playable
+      const { greet } = await import("./lazy.js");
+      greet();
+      await fetch("./asset.json").then((r) => r.json());
+      performance.mark("fixture-ready");
+
+      // post-mark straggler: must be included by the settle window
+      setTimeout(() => fetch("./late.json"), 300);
+    </script>
+  </body>
+</html>

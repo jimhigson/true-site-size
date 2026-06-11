@@ -1,0 +1,69 @@
+name: real-site-size
+description: >
+  Measures the real network bytes a browser transfers, from cold cache until
+  your app signals readiness with a performance.mark, and comments the change
+  on pull requests. Captures eager over-loading that file-size diffing cannot
+  see.
+author: Claude (Anthropic AI agent), commissioned by Jim Higson
+branding:
+  icon: download-cloud
+  color: blue
+
+inputs:
+  scenarios:
+    description: >
+      JSON array of scenarios, e.g.
+      [{"name": "menu", "url": "/", "mark": "menu-ready"}]. Scenarios run in
+      order in one browser session with a shared http cache, so each reports
+      only its incremental bytes; the comment also shows the journey total.
+    required: true
+  install-command:
+    description: command to install dependencies in each checkout (empty to skip)
+    default: ""
+  build-command:
+    description: command that produces the serveable site
+    default: "npm run build"
+  serve-dir:
+    description: directory (relative to the checkout) to serve after building
+    default: "dist"
+  compression:
+    description: simulate the production host's compression - gzip, br or none
+    default: "gzip"
+  runs:
+    description: repeat count - the minimum bytes across runs are reported
+    default: "3"
+  settle-ms:
+    description: ms of network quiet required after the mark before stopping
+    default: "1500"
+  mark-timeout-ms:
+    description: ms to wait for each scenario's performance.mark
+    default: "60000"
+  base-ref:
+    description: >
+      override the ref to compare against (defaults to the PR base branch).
+      Useful for release PRs that should compare against the previous release.
+    default: ""
+  comment:
+    description: post/update a PR comment with the results
+    default: "true"
+  github-token:
+    description: token used to post the PR comment
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - run: node "${{ github.action_path }}/dist/main.mjs"
+      shell: bash
+      env:
+        INPUT_SCENARIOS: ${{ inputs.scenarios }}
+        INPUT_INSTALL_COMMAND: ${{ inputs.install-command }}
+        INPUT_BUILD_COMMAND: ${{ inputs.build-command }}
+        INPUT_SERVE_DIR: ${{ inputs.serve-dir }}
+        INPUT_COMPRESSION: ${{ inputs.compression }}
+        INPUT_RUNS: ${{ inputs.runs }}
+        INPUT_SETTLE_MS: ${{ inputs.settle-ms }}
+        INPUT_MARK_TIMEOUT_MS: ${{ inputs.mark-timeout-ms }}
+        INPUT_BASE_REF: ${{ inputs.base-ref }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
