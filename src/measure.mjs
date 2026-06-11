@@ -1,5 +1,7 @@
 import CDP from "chrome-remote-interface";
 import { spawn } from "node:child_process";
+
+import { formatDuration } from "./formatBytes.mjs";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -322,7 +324,7 @@ export const runJourney = async (
             .slice(-5)
             .map(({ url, atMs }) => `${url} (at ${atMs}ms)`);
           throw new Error(
-            `network never settled within ${settleTimeoutMs}ms. ` +
+            `network never settled within ${formatDuration(settleTimeoutMs)}. ` +
               (stuck.length ? `in-flight: ${stuck.join(", ")}. ` : "") +
               (recent.length ? `most recent requests: ${recent.join(", ")}` : ""),
           );
@@ -360,7 +362,7 @@ export const runJourney = async (
         if (result.value) return result.value;
         if (Date.now() - start > stepTimeoutMs) {
           throw new Error(
-            `click target not found/visible within ${stepTimeoutMs}ms: ${selector}`,
+            `click target not found/visible within ${formatDuration(stepTimeoutMs)}: ${selector}`,
           );
         }
         await sleep(50);
@@ -422,7 +424,7 @@ export const runJourney = async (
             );
             if (markTime === null) {
               throw new Error(
-                `mark "${mark}" not seen within ${markTimeoutMs}ms`,
+                `mark "${mark}" not seen within ${formatDuration(markTimeoutMs)}`,
               );
             }
           }

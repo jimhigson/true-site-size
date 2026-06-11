@@ -31614,7 +31614,7 @@ var formatBytes = (n) => {
 var formatDuration = (ms) => {
   if (ms == null) return "\u2014";
   if (ms < 1e3) return `${Math.round(ms)}ms`;
-  return `${(ms / 1e3).toFixed(2)}s`;
+  return `${Number((ms / 1e3).toFixed(2))}s`;
 };
 
 // src/comment.mjs
@@ -31684,15 +31684,16 @@ ${fileRows.join("\n")}
   const totalBase = base && base.every((b) => !b.error) ? base.reduce((a, b) => a + b.bytes, 0) : null;
   const totalRow = totalHead != null ? `| **journey total** | **${formatBytes(totalHead)}** | ${totalBase != null ? `**${formatBytes(totalBase)}**` : "\u2014"} | ${formatDelta(totalHead, totalBase)} |` : "";
   const duplicateNotes = head.filter((h) => !h.error).flatMap((h) => {
-    const counts = /* @__PURE__ */ new Map();
+    const transfers = /* @__PURE__ */ new Map();
     for (const { url, bytes, ignored } of h.requestLog ?? []) {
       if (ignored || bytes === 0) continue;
-      counts.set(url, (counts.get(url) ?? 0) + 1);
+      transfers.set(url, [...transfers.get(url) ?? [], bytes]);
     }
-    return [...counts].filter(([, n]) => n > 1).map(
-      ([url, n]) => `
-> \u{1F501} **${h.name}** downloads \`${new URL(url).pathname}\` ${n} times in full - likely uncoalesced duplicate requests (eg crossorigin mismatch)`
-    );
+    return [...transfers].filter(([, sizes]) => sizes.length > 1).map(([url, sizes]) => {
+      const wasted = sizes.reduce((a, b) => a + b, 0) - Math.max(...sizes);
+      return `
+> \u{1F501} **${h.name}** downloads \`${new URL(url).pathname}\` ${sizes.length} times in full (~${formatBytes(wasted)} wasted) - likely uncoalesced duplicate requests (eg crossorigin mismatch)`;
+    });
   }).join("");
   const maxSpread = Math.max(...head.map((h) => h.bytesSpread ?? 0), 0);
   const spreadNote = maxSpread > spreadToleranceBytes ? `
@@ -31993,7 +31994,7 @@ var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, settleT
           const stuck = [...inflight.values()].map((entry) => entry.url);
           const recent = requestLog.slice(-5).map(({ url, atMs }) => `${url} (at ${atMs}ms)`);
           throw new Error(
-            `network never settled within ${settleTimeoutMs}ms. ` + (stuck.length ? `in-flight: ${stuck.join(", ")}. ` : "") + (recent.length ? `most recent requests: ${recent.join(", ")}` : "")
+            `network never settled within ${formatDuration(settleTimeoutMs)}. ` + (stuck.length ? `in-flight: ${stuck.join(", ")}. ` : "") + (recent.length ? `most recent requests: ${recent.join(", ")}` : "")
           );
         }
         await sleep(50);
@@ -32027,7 +32028,7 @@ var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, settleT
         if (result.value) return result.value;
         if (Date.now() - start > stepTimeoutMs) {
           throw new Error(
-            `click target not found/visible within ${stepTimeoutMs}ms: ${selector}`
+            `click target not found/visible within ${formatDuration(stepTimeoutMs)}: ${selector}`
           );
         }
         await sleep(50);
@@ -32081,7 +32082,7 @@ var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, settleT
             );
             if (markTime === null) {
               throw new Error(
-                `mark "${mark}" not seen within ${markTimeoutMs}ms`
+                `mark "${mark}" not seen within ${formatDuration(markTimeoutMs)}`
               );
             }
           }

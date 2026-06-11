@@ -8,5 +8,6 @@ export const formatBytes = (n) => {
 export const formatDuration = (ms) => {
   if (ms == null) return "\u2014";
   if (ms < 1000) return `${Math.round(ms)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
+  // Number() drops trailing zeros: 60000 -> "60s", 1830 -> "1.83s"
+  return `${Number((ms / 1000).toFixed(2))}s`;
 };

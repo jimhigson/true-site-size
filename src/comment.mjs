@@ -109,17 +109,18 @@ export const formatComment = (
   const duplicateNotes = head
     .filter((h) => !h.error)
     .flatMap((h) => {
-      const counts = new Map();
+      const transfers = new Map();
       for (const { url, bytes, ignored } of h.requestLog ?? []) {
         if (ignored || bytes === 0) continue;
-        counts.set(url, (counts.get(url) ?? 0) + 1);
+        transfers.set(url, [...(transfers.get(url) ?? []), bytes]);
       }
-      return [...counts]
-        .filter(([, n]) => n > 1)
-        .map(
-          ([url, n]) =>
-            `\n> 🔁 **${h.name}** downloads \`${new URL(url).pathname}\` ${n} times in full - likely uncoalesced duplicate requests (eg crossorigin mismatch)`,
-        );
+      return [...transfers]
+        .filter(([, sizes]) => sizes.length > 1)
+        .map(([url, sizes]) => {
+          // everything beyond one copy is waste
+          const wasted = sizes.reduce((a, b) => a + b, 0) - Math.max(...sizes);
+          return `\n> 🔁 **${h.name}** downloads \`${new URL(url).pathname}\` ${sizes.length} times in full (~${formatBytes(wasted)} wasted) - likely uncoalesced duplicate requests (eg crossorigin mismatch)`;
+        });
     })
     .join("");
 
