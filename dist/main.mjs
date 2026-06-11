@@ -31713,6 +31713,8 @@ var launchChrome = async () => {
       "--disable-sync",
       "--metrics-recording-only",
       "--mute-audio",
+      // ci runners have a small /dev/shm which can crash renderers
+      "--disable-dev-shm-usage",
       // external hosts resolve to nothing: measurements stay deterministic
       // and only the local server contributes bytes
       "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost",
@@ -31724,7 +31726,7 @@ var launchChrome = async () => {
     let stderr = "";
     const timer = setTimeout(
       () => reject(new Error(`chrome did not start: ${stderr}`)),
-      2e4
+      6e4
     );
     child.stderr.on("data", (chunk) => {
       stderr += chunk;
