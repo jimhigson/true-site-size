@@ -57,6 +57,15 @@ built site in headless Chrome and counts wire bytes until your own
    branch - or against `base-ref` if set, eg comparing release PRs against the
    previous release.
 
+## Per-file breakdown on the comment
+
+When a base is measurable, each row gets a collapsed details section listing
+the files whose transfer changed - sizes summed per url with content hashes
+stripped (`strip-hash` input, vite-style by default) so files match across
+the two builds. New and no-longer-loaded files are flagged; identical files
+are counted but hidden. This answers "where did the bytes come from?" without
+leaving the pr.
+
 ## What lands in the action log
 
 The PR comment stays terse; the **run log holds the evidence** (the comment

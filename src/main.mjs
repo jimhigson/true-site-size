@@ -72,6 +72,9 @@ const main = async () => {
     markTimeoutMs: Number(input("mark-timeout-ms", "60000")),
     baseRef: input("base-ref", ""),
     commentKey: input("comment-key", ""),
+    stripHash: input("strip-hash", "(-[a-zA-Z0-9_-]{8})\\.", {
+      allowEmpty: true,
+    }),
     comment: input("comment", "true") === "true",
     token: input("github-token", process.env.GITHUB_TOKEN ?? ""),
   };
@@ -207,6 +210,7 @@ const main = async () => {
     baseLabel,
     runUrl,
     commentKey: config.commentKey,
+    stripHash: config.stripHash,
   });
   console.log(body);
 

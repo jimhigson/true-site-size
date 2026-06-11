@@ -31627,7 +31627,49 @@ var formatDelta = (head, base) => {
   const sign = d > 0 ? "+" : "";
   return `${arrow} ${sign}${formatBytes(Math.abs(d))}${d < 0 ? " saved" : ""} (${sign}${pct.toFixed(1)}%)`;
 };
-var formatComment = (head, base, { baseLabel, runUrl, commentKey }) => {
+var formatComment = (head, base, { baseLabel, runUrl, commentKey, stripHash }) => {
+  const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
+  const fileOf = (url) => {
+    const path = url.startsWith("blob:") ? "(blob)" : new URL(url).pathname;
+    return stripRe ? path.replace(stripRe, ".") : path;
+  };
+  const filesOf = (requestLog) => {
+    const m = /* @__PURE__ */ new Map();
+    for (const { url, bytes, ignored } of requestLog ?? []) {
+      if (ignored) continue;
+      const f = fileOf(url);
+      m.set(f, (m.get(f) ?? 0) + bytes);
+    }
+    return m;
+  };
+  const detailsFor = (h, b) => {
+    if (h.error || !b || b.error) return "";
+    const headFiles = filesOf(h.requestLog);
+    const baseFiles = filesOf(b.requestLog);
+    const all = [.../* @__PURE__ */ new Set([...headFiles.keys(), ...baseFiles.keys()])];
+    const changed = all.map((f) => {
+      const hb = headFiles.get(f);
+      const bb = baseFiles.get(f);
+      return { f, hb, bb, delta: (hb ?? 0) - (bb ?? 0) };
+    }).filter(({ delta }) => delta !== 0).sort((a, z) => Math.abs(z.delta) - Math.abs(a.delta));
+    const unchangedCount = all.length - changed.length;
+    if (changed.length === 0) {
+      return `
+<details><summary>${h.name}: no per-file changes (${unchangedCount} files identical)</summary></details>`;
+    }
+    const fileRows = changed.map(({ f, hb, bb }) => {
+      const deltaCell = bb === void 0 ? `\u{1F53A} +${formatBytes(hb)} (new)` : hb === void 0 ? `\u{1F7E2} ${formatBytes(bb)} saved (no longer loaded)` : formatDelta(hb, bb);
+      const note = bb === void 0 ? " \u{1F195}" : hb === void 0 ? " \u{1F5D1}\uFE0F" : "";
+      return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaCell} |`;
+    });
+    return `
+<details><summary>${h.name}: ${changed.length} file(s) changed, ${unchangedCount} identical</summary>
+
+| file | this PR | base | change |
+| --- | --- | --- | --- |
+${fileRows.join("\n")}
+</details>`;
+  };
   const rows = head.map((h) => {
     const b = base?.find((r) => r.name === h.name);
     if (h.error) {
@@ -31653,6 +31695,7 @@ True wire bytes from cold cache until each scenario's \`performance.mark\`, netw
 ${rows.join("\n")}
 ${totalRow}
 ${spreadNote}
+${head.map((h) => detailsFor(h, base?.find((r) => r.name === h.name))).join("")}
 ${runUrl ? `
 <sub>\u{1F4CB} per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
 <sub>measured by [true-site-size](https://github.com/jimhigson/true-site-size)</sub>
@@ -32225,6 +32268,9 @@ var main = async () => {
     markTimeoutMs: Number(input("mark-timeout-ms", "60000")),
     baseRef: input("base-ref", ""),
     commentKey: input("comment-key", ""),
+    stripHash: input("strip-hash", "(-[a-zA-Z0-9_-]{8})\\.", {
+      allowEmpty: true
+    }),
     comment: input("comment", "true") === "true",
     token: input("github-token", process.env.GITHUB_TOKEN ?? "")
   };
@@ -32321,7 +32367,8 @@ var main = async () => {
   const body = formatComment(head, base, {
     baseLabel,
     runUrl,
-    commentKey: config.commentKey
+    commentKey: config.commentKey,
+    stripHash: config.stripHash
   });
   console.log(body);
   const issueNumber = event.pull_request?.number;

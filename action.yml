@@ -82,6 +82,12 @@ inputs:
       distinguishes multiple uses on one PR - each key maintains its own
       comment (and is shown in the comment heading)
     default: ""
+  strip-hash:
+    description: >
+      regex removed from request filenames so the per-file breakdown matches
+      files across base and head despite content hashes (default matches
+      vite/rollup style "-D4zXn_7K." hashes). Empty string disables.
+    default: "(-[a-zA-Z0-9_-]{8})\\."
   github-token:
     description: token used to post the PR comment
     default: ${{ github.token }}
@@ -116,4 +122,5 @@ runs:
         INPUT_BASE_REF: ${{ inputs.base-ref }}
         INPUT_COMMENT: ${{ inputs.comment }}
         INPUT_COMMENT_KEY: ${{ inputs.comment-key }}
+        INPUT_STRIP_HASH: ${{ inputs.strip-hash }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
