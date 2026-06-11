@@ -31632,7 +31632,7 @@ var formatComment = (head, base, { baseLabel, runUrl }) => {
   const totalBase = base && base.every((b) => !b.error) ? base.reduce((a, b) => a + b.bytes, 0) : null;
   const totalRow = totalHead != null ? `| **journey total** | **${formatBytes(totalHead)}** | ${totalBase != null ? `**${formatBytes(totalBase)}**` : "\u2014"} | ${formatDelta(totalHead, totalBase)} |` : "";
   const spreadNote = head.some((h) => h.bytesSpread > 0) ? `
-> \u26A0\uFE0F byte counts varied between runs (max spread ${formatBytes(Math.max(...head.map((h) => h.bytesSpread ?? 0)))}) - treat small deltas with caution` : "";
+> \u26A0\uFE0F **determinism check failed**: repeat runs transferred different bytes (max spread ${formatBytes(Math.max(...head.map((h) => h.bytesSpread ?? 0)))}). Something loads non-deterministically - do not trust deltas until investigated. The per-request breakdown in the run logs shows which requests varied.` : "";
   return `${marker}
 ### \u{1F4E1} real network cost to ready
 
@@ -31878,7 +31878,7 @@ var measure = async (scenarios, { runs, settleMs, markTimeoutMs }) => {
       bytesSpread: max - min,
       requests: best.requests,
       failedRequests: best.failedRequests,
-      timeToMarkMs: Math.min(...ok.map((r) => r.timeToMarkMs)),
+      timeToMarkMs: best.timeToMarkMs,
       requestLog: best.requestLog
     };
   });

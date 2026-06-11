@@ -238,7 +238,7 @@ export const measure = async (scenarios, { runs, settleMs, markTimeoutMs }) => {
       bytesSpread: max - min,
       requests: best.requests,
       failedRequests: best.failedRequests,
-      timeToMarkMs: Math.min(...ok.map((r) => r.timeToMarkMs)),
+      timeToMarkMs: best.timeToMarkMs,
       requestLog: best.requestLog,
     };
   });

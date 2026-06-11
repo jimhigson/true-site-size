@@ -30,8 +30,10 @@ inputs:
     description: simulate the production host's compression - gzip, br or none
     default: "gzip"
   runs:
-    description: repeat count - the minimum bytes across runs are reported
-    default: "3"
+    description: >
+      repeat count. Runs are expected to be byte-identical - the extra run is
+      a determinism self-check, and disagreement is flagged on the comment.
+    default: "2"
   settle-ms:
     description: ms of network quiet required after the mark before stopping
     default: "1500"

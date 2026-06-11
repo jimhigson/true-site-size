@@ -54,7 +54,7 @@ export const formatComment = (
       : "";
 
   const spreadNote = head.some((h) => h.bytesSpread > 0)
-    ? `\n> ⚠️ byte counts varied between runs (max spread ${formatBytes(Math.max(...head.map((h) => h.bytesSpread ?? 0)))}) - treat small deltas with caution`
+    ? `\n> ⚠️ **determinism check failed**: repeat runs transferred different bytes (max spread ${formatBytes(Math.max(...head.map((h) => h.bytesSpread ?? 0)))}). Something loads non-deterministically - do not trust deltas until investigated. The per-request breakdown in the run logs shows which requests varied.`
     : "";
 
   return `${marker}

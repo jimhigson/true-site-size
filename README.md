@@ -43,11 +43,17 @@ built site in headless Chrome and counts wire bytes until your own
 
 3. Counting stops only when the network has been quiet for `settle-ms` after
    the mark, so requests *triggered by* becoming ready are included and the
-   numbers are deterministic. Each measurement runs `runs` times in fresh
-   profiles; the minimum is reported, with the spread flagged if runs
-   disagreed.
+   numbers are deterministic.
 
-4. On PRs it posts (and updates in place) a comment comparing against the base
+4. **Determinism is verified, not assumed**: each measurement runs `runs`
+   times (default 2) in fresh browser profiles. Byte-identical results prove
+   the number is a reproducible fact and the comment reports it plainly; any
+   disagreement means something loads non-deterministically, and the comment
+   carries a prominent warning instead of a quietly-wrong delta. The
+   per-request breakdown (every url, size and timing) is printed to the run
+   log and linked from the comment for diagnosis.
+
+5. On PRs it posts (and updates in place) a comment comparing against the base
    branch - or against `base-ref` if set, eg comparing release PRs against the
    previous release.
 
@@ -68,7 +74,7 @@ built site in headless Chrome and counts wire bytes until your own
 | `build-command` | `npm run build` | produces the site |
 | `serve-dir` | `dist` | directory served after building |
 | `compression` | `gzip` | simulate the host: `gzip`, `br` or `none` |
-| `runs` | `3` | repeats; minimum reported |
+| `runs` | `2` | repeats; byte-equality across runs is the determinism check |
 | `settle-ms` | `1500` | network quiet required after the mark |
 | `mark-timeout-ms` | `60000` | per-scenario wait for the mark |
 | `base-ref` | PR base | override comparison ref |
