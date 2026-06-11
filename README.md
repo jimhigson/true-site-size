@@ -57,6 +57,26 @@ built site in headless Chrome and counts wire bytes until your own
    branch - or against `base-ref` if set, eg comparing release PRs against the
    previous release.
 
+## What lands in the action log
+
+The PR comment stays terse; the **run log holds the evidence** (the comment
+links to it). For every measured ref and row, the log contains the full
+per-request breakdown from the run that produced the reported number, largest
+first:
+
+```
+[true-site-size] head / main menu: 1291886 bytes over 118 requests, mark at 239ms (per-request breakdown follows, largest first)
+     714539 B  at    142ms  http://localhost:40123/assets/store-DJE4cVo5.js
+      67001 B  at    187ms  http://localhost:40123/assets/sprites-BYouFVgw.webp
+        267 B  at     98ms  http://localhost:40123/api/campaigns  [ignored - not counted]
+      ...
+```
+
+This is the diagnosis trail: when a delta appears (or the determinism check
+fails), diffing two runs' breakdowns names the exact urls responsible. Build
+output from `install-command`/`build-command` streams to the same log ahead
+of the measurements.
+
 ## Determinism measures
 
 - service worker bypassed (no precache contamination)

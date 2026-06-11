@@ -78,26 +78,55 @@ const launchChrome = async () => {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** named keys for the `keys` step; single characters pass through */
+const keyDefs = {
+  Enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },
+  Escape: { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 },
+  Tab: { key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 },
+  Space: { key: " ", code: "Space", windowsVirtualKeyCode: 32, text: " " },
+  ArrowUp: { key: "ArrowUp", code: "ArrowUp", windowsVirtualKeyCode: 38 },
+  ArrowDown: { key: "ArrowDown", code: "ArrowDown", windowsVirtualKeyCode: 40 },
+  ArrowLeft: { key: "ArrowLeft", code: "ArrowLeft", windowsVirtualKeyCode: 37 },
+  ArrowRight: {
+    key: "ArrowRight",
+    code: "ArrowRight",
+    windowsVirtualKeyCode: 39,
+  },
+};
+
 /**
- * Run all scenarios once, in order, in a single browser session (so the http
- * cache carries between scenarios and each reports only its incremental
- * bytes). Returns per-scenario results.
+ * Run a journey once in a fresh browser. A journey is an array of steps:
+ *
+ *  - { goto: url } - navigate
+ *  - { click: selector } - wait for the selector to exist and be visible,
+ *    scroll it into view, then send a trusted click to its centre
+ *  - { keys: "Enter ArrowDown a" } - trusted key presses, space-separated
+ *  - { script: "..." } - evaluate in the page (awaited if it returns a promise)
+ *  - { row: name, mark: markName } - wait for the performance mark then for
+ *    the network to settle; closes the current measurement segment as a
+ *    result row
+ *
+ * Any step may also carry afterMark: markName to wait for an app readiness
+ * mark before the step runs.
+ *
+ * Requests whose urls match ignorePatterns are logged but not counted - for
+ * endpoints whose response size legitimately varies (eg live db reads).
  */
-export const runScenarios = async (
-  /** array of { name, url, mark } */
-  scenarios,
-  /** { settleMs, markTimeoutMs } */
-  { settleMs, markTimeoutMs },
+export const runJourney = async (
+  steps,
+  { settleMs, markTimeoutMs, stepTimeoutMs, ignorePatterns },
 ) => {
   const chrome = await launchChrome();
   const client = await CDP({ port: chrome.port });
-  const { Network, Page, Runtime } = client;
+  const { Network, Page, Runtime, Input } = client;
   const results = [];
+  const ignoreRes = (ignorePatterns ?? []).map((p) => new RegExp(p));
 
   try {
     await Network.enable({});
     await Network.setBypassServiceWorker({ bypass: true });
     await Page.enable();
+    await Runtime.enable();
     // bypassing only stops an active worker serving requests - registration
     // would still install one whose background precache warms the http cache
     // and silently absorbs page bytes. Disable registration outright so the
@@ -108,18 +137,19 @@ export const runScenarios = async (
           Promise.reject(new Error("service workers disabled by true-site-size"));
       }`,
     });
-    await Runtime.enable();
 
-    // network accounting - reset per scenario
+    // network accounting for the current row segment
     let bytes = 0;
     let requests = 0;
     let failed = 0;
+    let ignoredBytes = 0;
     let lastActivity = Date.now();
-    const inflight = new Set();
-    /** per-request {url, bytes, atMs} for the current scenario */
+    let segmentStart = Date.now();
     let requestLog = [];
-    let scenarioStart = Date.now();
+    const inflight = new Set();
     const urlOf = new Map();
+
+    const isIgnored = (url) => ignoreRes.some((re) => re.test(url));
 
     Network.requestWillBeSent(({ requestId, request }) => {
       if (request.url.startsWith("data:")) return;
@@ -130,12 +160,19 @@ export const runScenarios = async (
     Network.loadingFinished(({ requestId, encodedDataLength }) => {
       if (!inflight.has(requestId)) return;
       inflight.delete(requestId);
-      bytes += encodedDataLength;
-      requests += 1;
+      const url = urlOf.get(requestId);
+      const ignored = isIgnored(url);
+      if (ignored) {
+        ignoredBytes += encodedDataLength;
+      } else {
+        bytes += encodedDataLength;
+        requests += 1;
+      }
       requestLog.push({
-        url: urlOf.get(requestId),
+        url,
         bytes: encodedDataLength,
-        atMs: Date.now() - scenarioStart,
+        atMs: Date.now() - segmentStart,
+        ...(ignored && { ignored: true }),
       });
       lastActivity = Date.now();
     });
@@ -149,60 +186,144 @@ export const runScenarios = async (
       lastActivity = Date.now();
     });
 
-    for (const scenario of scenarios) {
+    const resetSegment = () => {
       bytes = 0;
       requests = 0;
       failed = 0;
-      inflight.clear();
+      ignoredBytes = 0;
       requestLog = [];
-      scenarioStart = Date.now();
+      inflight.clear();
+      segmentStart = Date.now();
+    };
 
-      const navStart = Date.now();
-      await Page.navigate({ url: scenario.url });
-
-      // wait for the app's performance mark
-      let markTime;
+    const waitForMark = async (mark, timeoutMs) => {
+      const start = Date.now();
       for (;;) {
         const { result } = await Runtime.evaluate({
-          expression: `performance.getEntriesByName(${JSON.stringify(scenario.mark)}, "mark")[0]?.startTime ?? null`,
+          expression: `performance.getEntriesByName(${JSON.stringify(mark)}, "mark")[0]?.startTime ?? null`,
           returnByValue: true,
         });
         if (result.value !== null && result.value !== undefined) {
-          markTime = result.value;
-          break;
+          return result.value;
         }
-        if (Date.now() - navStart > markTimeoutMs) {
-          markTime = null;
-          break;
+        if (Date.now() - start > timeoutMs) {
+          return null;
         }
         await sleep(50);
       }
+    };
 
-      if (markTime === null) {
-        results.push({
-          name: scenario.name,
-          error: `mark "${scenario.mark}" not seen within ${markTimeoutMs}ms`,
-        });
-        continue;
-      }
-
-      // settle: wait until nothing is in flight and the network has been
-      // quiet for settleMs
+    const waitForSettle = async () => {
       for (;;) {
         if (inflight.size === 0 && Date.now() - lastActivity >= settleMs) {
-          break;
+          return;
         }
         await sleep(50);
       }
+    };
 
-      results.push({
-        name: scenario.name,
-        bytes,
-        requests,
-        failedRequests: failed,
-        timeToMarkMs: Math.round(markTime),
-        requestLog: [...requestLog],
-      });
+    /** wait for selector to exist + be visible; returns its centre point */
+    const waitForClickable = async (selector) => {
+      const start = Date.now();
+      for (;;) {
+        const { result } = await Runtime.evaluate({
+          expression: `(() => {
+            const el = document.querySelector(${JSON.stringify(selector)});
+            if (!el) return null;
+            el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) return null;
+            return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+          })()`,
+          returnByValue: true,
+        });
+        if (result.value) return result.value;
+        if (Date.now() - start > stepTimeoutMs) {
+          throw new Error(
+            `click target not found/visible within ${stepTimeoutMs}ms: ${selector}`,
+          );
+        }
+        await sleep(50);
+      }
+    };
+
+    let stepError = null;
+    for (const step of steps) {
+      try {
+        if (step.afterMark) {
+          const seen = await waitForMark(step.afterMark, markTimeoutMs);
+          if (seen === null) {
+            throw new Error(`afterMark "${step.afterMark}" not seen`);
+          }
+        }
+
+        if (step.goto !== undefined) {
+          await Page.navigate({ url: step.goto });
+        } else if (step.click !== undefined) {
+          const { x, y } = await waitForClickable(step.click);
+          for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
+            await Input.dispatchMouseEvent({
+              type,
+              x,
+              y,
+              button: type === "mouseMoved" ? "none" : "left",
+              clickCount: 1,
+            });
+          }
+        } else if (step.keys !== undefined) {
+          for (const name of step.keys.split(/\s+/).filter(Boolean)) {
+            const def =
+              keyDefs[name] ??
+              (name.length === 1 ?
+                { key: name, code: `Key${name.toUpperCase()}`, text: name }
+              : null);
+            if (!def) throw new Error(`unknown key: ${name}`);
+            await Input.dispatchKeyEvent({ type: "keyDown", ...def });
+            await Input.dispatchKeyEvent({ type: "keyUp", ...def });
+            await sleep(80);
+          }
+        } else if (step.script !== undefined) {
+          const { exceptionDetails } = await Runtime.evaluate({
+            expression: step.script,
+            awaitPromise: true,
+          });
+          if (exceptionDetails) {
+            throw new Error(`script step threw: ${exceptionDetails.text}`);
+          }
+        } else if (step.row !== undefined) {
+          const markTime = await waitForMark(step.mark, markTimeoutMs);
+          if (markTime === null) {
+            throw new Error(
+              `mark "${step.mark}" not seen within ${markTimeoutMs}ms`,
+            );
+          }
+          await waitForSettle();
+          results.push({
+            name: step.row,
+            bytes,
+            requests,
+            failedRequests: failed,
+            ignoredBytes,
+            timeToMarkMs: Math.round(Date.now() - segmentStart),
+            requestLog: [...requestLog],
+          });
+          resetSegment();
+        } else {
+          throw new Error(`unrecognised step: ${JSON.stringify(step)}`);
+        }
+      } catch (e) {
+        stepError = e.message;
+        break;
+      }
+    }
+    if (stepError !== null) {
+      // attribute the failure to the row the journey was working towards
+      const remaining = steps.filter(
+        (s, i) => s.row !== undefined && i >= 0,
+      );
+      const nextRowName =
+        remaining[results.length]?.row ?? `row ${results.length + 1}`;
+      results.push({ name: nextRowName, error: stepError });
     }
   } finally {
     await client.close().catch(() => {});
@@ -212,34 +333,44 @@ export const runScenarios = async (
 };
 
 /**
- * Run the full scenario sequence `runs` times in fresh browser profiles and
- * report, per scenario, the minimum bytes across runs (the deterministic
- * critical-path payload) plus the spread for flagging instability.
+ * Run the journey `runs` times in fresh browser profiles. Runs are expected
+ * to transfer identical bytes - the repeat is a determinism self-check. The
+ * reported figures (and the request log) come from the cheapest run; any
+ * disagreement is surfaced as bytesSpread.
  */
-export const measure = async (scenarios, { runs, settleMs, markTimeoutMs }) => {
+export const measure = async (
+  steps,
+  { runs, settleMs, markTimeoutMs, stepTimeoutMs, ignorePatterns },
+) => {
   const allRuns = [];
   for (let i = 0; i < runs; i++) {
-    allRuns.push(await runScenarios(scenarios, { settleMs, markTimeoutMs }));
+    allRuns.push(
+      await runJourney(steps, {
+        settleMs,
+        markTimeoutMs,
+        stepTimeoutMs,
+        ignorePatterns,
+      }),
+    );
   }
-  return scenarios.map((scenario, i) => {
-    const runsFor = allRuns.map((run) => run[i]);
-    const errored = runsFor.find((r) => r.error);
-    const ok = runsFor.filter((r) => !r.error);
+  const rowCount = Math.max(...allRuns.map((r) => r.length));
+  return Array.from({ length: rowCount }, (_, i) => {
+    const runsFor = allRuns.map((run) => run[i]).filter(Boolean);
+    const errored = runsFor.find((r) => r?.error);
+    const ok = runsFor.filter((r) => r && !r.error);
     if (ok.length === 0) {
-      return { name: scenario.name, error: errored.error };
+      return { name: errored?.name ?? `row ${i + 1}`, error: errored?.error };
     }
     const bytesValues = ok.map((r) => r.bytes);
     const min = Math.min(...bytesValues);
     const max = Math.max(...bytesValues);
     const best = ok.find((r) => r.bytes === min);
     return {
-      name: scenario.name,
-      bytes: min,
+      ...best,
       bytesSpread: max - min,
-      requests: best.requests,
-      failedRequests: best.failedRequests,
-      timeToMarkMs: best.timeToMarkMs,
-      requestLog: best.requestLog,
+      ...(errored && {
+        error: `succeeded in only ${ok.length}/${runsFor.length} runs: ${errored.error}`,
+      }),
     };
   });
 };

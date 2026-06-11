@@ -38,7 +38,9 @@ export const formatComment = (
       : b.error ? `⚠️ no data`
       : formatBytes(b.bytes);
     const deltaCell = formatDelta(h.bytes, b?.error ? null : b?.bytes);
-    return `| ${h.name} | ${formatBytes(h.bytes)} (${h.requests} reqs, ${h.timeToMarkMs}ms to mark) | ${baseCell} | ${deltaCell} |`;
+    const ignoredNote =
+      h.ignoredBytes > 0 ? `, ${formatBytes(h.ignoredBytes)} ignored` : "";
+    return `| ${h.name} | ${formatBytes(h.bytes)} (${h.requests} reqs, ${h.timeToMarkMs}ms to mark${ignoredNote}) | ${baseCell} | ${deltaCell} |`;
   });
 
   const totalHead = head.every((h) => !h.error)

@@ -14,5 +14,11 @@ jobs:
           serve-dir: fixtures/site
           comment: "false"
           runs: "2"
-          scenarios: |
-            [{ "name": "fixture", "url": "/", "mark": "fixture-ready" }]
+          ignore-url-patterns: '["varies\\.json$"]'
+          journey: |
+            [
+              { "goto": "/" },
+              { "row": "load", "mark": "fixture-ready" },
+              { "click": "#more" },
+              { "row": "after click", "mark": "more-ready" }
+            ]

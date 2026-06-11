@@ -33,36 +33,46 @@ const buildAndMeasure = async (checkoutDir, config) => {
   }
   const server = await serve(serveDir, config.compression);
   try {
-    const scenarios = config.scenarios.map((s) => ({
-      ...s,
-      url: new URL(s.url, server.origin).href,
-    }));
-    return await measure(scenarios, config);
+    const steps = config.steps.map((s) =>
+      s.goto !== undefined ?
+        { ...s, goto: new URL(s.goto, server.origin).href }
+      : s,
+    );
+    return await measure(steps, config);
   } finally {
     await server.close();
   }
 };
 
 const main = async () => {
+  // a journey is the full step language; the simpler `scenarios` input is
+  // sugar for goto/row pairs
+  const journeyInput = input("journey", "");
+  const scenarioSugar = JSON.parse(input("scenarios", "[]")).flatMap(
+    (s, i) => [
+      { goto: s.url },
+      { row: s.name ?? `scenario ${i + 1}`, mark: s.mark },
+    ],
+  );
   const config = {
-    scenarios: JSON.parse(input("scenarios", "[]")).map((s, i) => ({
-      name: s.name ?? `scenario ${i + 1}`,
-      url: s.url,
-      mark: s.mark,
-    })),
+    steps: journeyInput ? JSON.parse(journeyInput) : scenarioSugar,
     installCommand: input("install-command", "", { allowEmpty: true }),
     buildCommand: input("build-command", "npm run build", { allowEmpty: true }),
     serveDir: input("serve-dir", "dist"),
     compression: input("compression", "gzip"),
-    runs: Number(input("runs", "3")),
+    runs: Number(input("runs", "2")),
+    stepTimeoutMs: Number(input("step-timeout-ms", "20000")),
+    ignorePatterns: JSON.parse(input("ignore-url-patterns", "[]")),
     settleMs: Number(input("settle-ms", "1500")),
     markTimeoutMs: Number(input("mark-timeout-ms", "60000")),
     baseRef: input("base-ref", ""),
     comment: input("comment", "true") === "true",
     token: input("github-token", process.env.GITHUB_TOKEN ?? ""),
   };
-  if (config.scenarios.length === 0) {
-    throw new Error("no scenarios configured - set the `scenarios` input");
+  if (config.steps.length === 0) {
+    throw new Error(
+      "nothing to measure - set the `journey` or `scenarios` input",
+    );
   }
 
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
@@ -77,8 +87,16 @@ const main = async () => {
         `[true-site-size] ${label} / ${r.name}: ${r.bytes} bytes over ${r.requests} requests, mark at ${r.timeToMarkMs}ms (per-request breakdown follows, largest first)`,
       );
       const sorted = [...(r.requestLog ?? [])].sort((a, b) => b.bytes - a.bytes);
-      for (const { url, bytes, atMs } of sorted) {
-        console.log(`  ${String(bytes).padStart(9)} B  at ${String(atMs).padStart(6)}ms  ${url}`);
+      for (const { url, bytes, atMs, ignored } of sorted) {
+        if (ignored) {
+          console.log(
+            `  ${String(bytes).padStart(9)} B  at ${String(atMs).padStart(6)}ms  ${url}  [ignored - not counted]`,
+          );
+          continue;
+        }
+        console.log(
+          `  ${String(bytes).padStart(9)} B  at ${String(atMs).padStart(6)}ms  ${url}`,
+        );
       }
     }
   };

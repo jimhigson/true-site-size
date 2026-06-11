@@ -6,16 +6,28 @@
   </head>
   <body>
     <h1>fixture</h1>
+    <button id="more" style="display: none">load more</button>
     <script type="module">
       // a lazy chunk plus an asset fetch, then the readiness mark - mimics an
       // app that loads its world before becoming playable
       const { greet } = await import("./lazy.js");
       greet();
       await fetch("./asset.json").then((r) => r.json());
+      // a request the selftest excludes via ignore-url-patterns - mimics a
+      // live api call whose response size varies over time
+      await fetch("./varies.json");
       performance.mark("fixture-ready");
 
       // post-mark straggler: must be included by the settle window
       setTimeout(() => fetch("./late.json"), 300);
+
+      // interactive part: a button that lazy-loads more, for journey tests
+      const button = document.querySelector("#more");
+      button.style.display = "";
+      button.addEventListener("click", async () => {
+        await import("./lazy2.js");
+        performance.mark("more-ready");
+      });
     </script>
   </body>
 </html>

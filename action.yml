@@ -10,13 +10,31 @@ branding:
   color: blue
 
 inputs:
+  journey:
+    description: >
+      JSON array of steps measuring an interactive journey in one browser
+      session: {goto: url}, {click: selector}, {keys: "Enter ArrowDown"},
+      {script: "..."}, {row: name, mark: markName}. Each row step closes a
+      measurement segment when its performance.mark fires and the network
+      settles. Any step may carry afterMark to await an app readiness mark
+      first. Takes precedence over `scenarios`.
+    default: ""
+  ignore-url-patterns:
+    description: >
+      JSON array of regex strings. Matching requests are excluded from byte
+      counts (still shown in the run-log breakdown, tagged ignored) - for
+      endpoints whose response size legitimately varies, eg live db reads.
+    default: "[]"
+  step-timeout-ms:
+    description: per-step timeout, eg waiting for a click target to appear
+    default: "20000"
   scenarios:
     description: >
-      JSON array of scenarios, e.g.
-      [{"name": "menu", "url": "/", "mark": "menu-ready"}]. Scenarios run in
-      order in one browser session with a shared http cache, so each reports
-      only its incremental bytes; the comment also shows the journey total.
-    required: true
+      simple form of `journey`: JSON array like
+      [{"name": "menu", "url": "/", "mark": "menu-ready"}], each entry a
+      navigation then a row. Scenarios run in order in one browser session
+      with a shared http cache, so each reports only its incremental bytes.
+    default: "[]"
   install-command:
     description: command to install dependencies in each checkout (empty to skip)
     default: ""
@@ -59,6 +77,9 @@ runs:
       shell: bash
       env:
         INPUT_SCENARIOS: ${{ inputs.scenarios }}
+        INPUT_JOURNEY: ${{ inputs.journey }}
+        INPUT_IGNORE_URL_PATTERNS: ${{ inputs.ignore-url-patterns }}
+        INPUT_STEP_TIMEOUT_MS: ${{ inputs.step-timeout-ms }}
         INPUT_INSTALL_COMMAND: ${{ inputs.install-command }}
         INPUT_BUILD_COMMAND: ${{ inputs.build-command }}
         INPUT_SERVE_DIR: ${{ inputs.serve-dir }}
