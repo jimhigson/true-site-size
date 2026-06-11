@@ -231,8 +231,19 @@ export const runJourney = async (
             const el = document.querySelector(${JSON.stringify(selector)});
             if (!el) return null;
             el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
-            const r = el.getBoundingClientRect();
-            if (r.width === 0 || r.height === 0) return null;
+            // display:contents elements have no box of their own - fall back
+            // to the first descendant that does
+            const boxOf = (node) => {
+              const r = node.getBoundingClientRect();
+              if (r.width > 0 && r.height > 0) return r;
+              for (const child of node.querySelectorAll("*")) {
+                const cr = child.getBoundingClientRect();
+                if (cr.width > 0 && cr.height > 0) return cr;
+              }
+              return null;
+            };
+            const r = boxOf(el);
+            if (!r) return null;
             return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
           })()`,
           returnByValue: true,

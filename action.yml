@@ -73,6 +73,14 @@ inputs:
 runs:
   using: composite
   steps:
+    # rolling store of base-ref measurements, keyed inside by (sha, config) -
+    # repeat pushes to a pr skip rebuilding and re-measuring the base
+    - uses: actions/cache@v4
+      with:
+        path: ~/.true-site-size-cache
+        key: true-site-size-base-${{ github.run_id }}
+        restore-keys: |
+          true-site-size-base-
     - run: node "${{ github.action_path }}/dist/main.mjs"
       shell: bash
       env:

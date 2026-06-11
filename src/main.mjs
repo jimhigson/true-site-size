@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { formatComment, postComment } from "./comment.mjs";
+import { formatBytes } from "./formatBytes.mjs";
 import { measure } from "./measure.mjs";
 import { serve } from "./serve.mjs";
 
@@ -84,18 +87,18 @@ const main = async () => {
         continue;
       }
       console.log(
-        `[true-site-size] ${label} / ${r.name}: ${r.bytes} bytes over ${r.requests} requests, mark at ${r.timeToMarkMs}ms (per-request breakdown follows, largest first)`,
+        `[true-site-size] ${label} / ${r.name}: ${formatBytes(r.bytes)} over ${r.requests} requests, mark at ${r.timeToMarkMs}ms (per-request breakdown follows, largest first)`,
       );
       const sorted = [...(r.requestLog ?? [])].sort((a, b) => b.bytes - a.bytes);
       for (const { url, bytes, atMs, ignored } of sorted) {
         if (ignored) {
           console.log(
-            `  ${String(bytes).padStart(9)} B  at ${String(atMs).padStart(6)}ms  ${url}  [ignored - not counted]`,
+            `  ${formatBytes(bytes).padStart(9)}  at ${String(atMs).padStart(6)}ms  ${url}  [ignored - not counted]`,
           );
           continue;
         }
         console.log(
-          `  ${String(bytes).padStart(9)} B  at ${String(atMs).padStart(6)}ms  ${url}`,
+          `  ${formatBytes(bytes).padStart(9)}  at ${String(atMs).padStart(6)}ms  ${url}`,
         );
       }
     }

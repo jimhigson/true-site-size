@@ -77,6 +77,12 @@ fails), diffing two runs' breakdowns names the exact urls responsible. Build
 output from `install-command`/`build-command` streams to the same log ahead
 of the measurements.
 
+Base-ref measurements are cached by (base sha, measurement config) via
+`actions/cache`, so repeat pushes to a pull request skip rebuilding and
+re-measuring the unchanged base - the log says `base ... loaded from cache`
+when this happens. The first run after a base or config change measures it
+fresh.
+
 ## Determinism measures
 
 - service worker bypassed (no precache contamination)

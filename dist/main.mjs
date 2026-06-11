@@ -31599,7 +31599,7 @@ var require_chrome_remote_interface = __commonJS({
 
 // src/main.mjs
 import { execSync } from "node:child_process";
-import { existsSync as existsSync3, rmSync as rmSync2 } from "node:fs";
+import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync2, rmSync as rmSync2, writeFileSync } from "node:fs";
 import { join as join3, resolve } from "node:path";
 
 // src/comment.mjs
@@ -31674,6 +31674,14 @@ var postComment = async (body, { token, repo, issueNumber, apiUrl = "https://api
   if (!res.ok) {
     throw new Error(`posting comment failed: ${res.status} ${await res.text()}`);
   }
+};
+
+// src/formatBytes.mjs
+var formatBytes2 = (n) => {
+  if (n == null) return "\u2014";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 };
 
 // src/measure.mjs
@@ -31868,8 +31876,19 @@ var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, ignoreP
             const el = document.querySelector(${JSON.stringify(selector)});
             if (!el) return null;
             el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
-            const r = el.getBoundingClientRect();
-            if (r.width === 0 || r.height === 0) return null;
+            // display:contents elements have no box of their own - fall back
+            // to the first descendant that does
+            const boxOf = (node) => {
+              const r = node.getBoundingClientRect();
+              if (r.width > 0 && r.height > 0) return r;
+              for (const child of node.querySelectorAll("*")) {
+                const cr = child.getBoundingClientRect();
+                if (cr.width > 0 && cr.height > 0) return cr;
+              }
+              return null;
+            };
+            const r = boxOf(el);
+            if (!r) return null;
             return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
           })()`,
           returnByValue: true
@@ -32134,18 +32153,18 @@ var main = async () => {
         continue;
       }
       console.log(
-        `[true-site-size] ${label} / ${r.name}: ${r.bytes} bytes over ${r.requests} requests, mark at ${r.timeToMarkMs}ms (per-request breakdown follows, largest first)`
+        `[true-site-size] ${label} / ${r.name}: ${formatBytes2(r.bytes)} over ${r.requests} requests, mark at ${r.timeToMarkMs}ms (per-request breakdown follows, largest first)`
       );
       const sorted = [...r.requestLog ?? []].sort((a, b) => b.bytes - a.bytes);
       for (const { url, bytes, atMs, ignored } of sorted) {
         if (ignored) {
           console.log(
-            `  ${String(bytes).padStart(9)} B  at ${String(atMs).padStart(6)}ms  ${url}  [ignored - not counted]`
+            `  ${formatBytes2(bytes).padStart(9)}  at ${String(atMs).padStart(6)}ms  ${url}  [ignored - not counted]`
           );
           continue;
         }
         console.log(
-          `  ${String(bytes).padStart(9)} B  at ${String(atMs).padStart(6)}ms  ${url}`
+          `  ${formatBytes2(bytes).padStart(9)}  at ${String(atMs).padStart(6)}ms  ${url}`
         );
       }
     }
