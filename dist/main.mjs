@@ -32227,7 +32227,7 @@ var main = async () => {
       `[true-site-size] hard timeout: the whole action did not finish within ${config.timeoutMs}ms (timeout-ms input) - failing rather than hanging`
     );
     process.exit(1);
-  }, config.timeoutMs);
+  }, config.timeoutMs).unref();
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
   const logBreakdown = (label, results) => {
     for (const r of results) {

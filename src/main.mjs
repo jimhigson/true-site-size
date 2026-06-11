@@ -83,13 +83,14 @@ const main = async () => {
 
   // whole-process watchdog: the individual waits are all capped, but this
   // guarantees that nothing - including bugs in this action - can hang a ci
-  // job indefinitely
+  // job indefinitely. unref so the pending timer cannot itself keep the
+  // process alive after a successful finish
   setTimeout(() => {
     console.error(
       `[true-site-size] hard timeout: the whole action did not finish within ${config.timeoutMs}ms (timeout-ms input) - failing rather than hanging`,
     );
     process.exit(1);
-  }, config.timeoutMs);
+  }, config.timeoutMs).unref();
 
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
 
