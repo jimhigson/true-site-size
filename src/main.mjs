@@ -237,6 +237,14 @@ const main = async () => {
   if (summaryPath) {
     await import("node:fs").then((fs) => fs.appendFileSync(summaryPath, body));
   }
+
+  // also write the comment markdown to an explicit file when asked. Useful for
+  // local runs (eg via act, where GITHUB_STEP_SUMMARY is inside the container
+  // and not readable on the host) that want to read the report back out.
+  const outputFile = process.env.TRUE_SITE_SIZE_OUTPUT_FILE;
+  if (outputFile) {
+    writeFileSync(outputFile, body);
+  }
 };
 
 main().catch((e) => {

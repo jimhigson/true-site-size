@@ -181,6 +181,17 @@ Requires a Chrome/Chromium on the runner (preinstalled on GitHub's Ubuntu
 runners; override with `CHROME_PATH`). Needs `pull-requests: write` permission
 for the comment.
 
+## Environment variables
+
+These are read from the environment rather than passed as `with:` inputs, so
+they can be set for local/advanced runs (eg under [`act`](https://github.com/nektos/act)):
+
+| env var | |
+| --- | --- |
+| `CHROME_PATH` | path to the Chrome/Chromium binary, if not in a standard location |
+| `TRUE_SITE_SIZE_CACHE_DIR` | directory the base-ref measurement is cached in, keyed by `(base sha, config)` |
+| `TRUE_SITE_SIZE_OUTPUT_FILE` | also write the comment markdown to this file. Useful for local runs (eg `act`, where `GITHUB_STEP_SUMMARY` lives inside the container and isn't readable on the host) that want to read the report back out |
+
 ## Authorship
 
 Built by Claude (an Anthropic AI agent), commissioned and directed by Jim
