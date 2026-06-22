@@ -54,6 +54,13 @@ inputs:
   build-command:
     description: command that produces the serveable site
     default: "npm run build"
+  clean-command:
+    description: >
+      command run in the workspace between the head and base builds (empty to
+      skip). The base checks out into a worktree inside the workspace, so
+      without this its build can inherit head's node_modules via upward module
+      resolution; eg "rm -rf node_modules" isolates them.
+    default: ""
   serve-dir:
     description: directory (relative to the checkout) to serve after building
     default: "dist"
@@ -137,6 +144,7 @@ runs:
         INPUT_TIMEOUT_MS: ${{ inputs.timeout-ms }}
         INPUT_INSTALL_COMMAND: ${{ inputs.install-command }}
         INPUT_BUILD_COMMAND: ${{ inputs.build-command }}
+        INPUT_CLEAN_COMMAND: ${{ inputs.clean-command }}
         INPUT_SERVE_DIR: ${{ inputs.serve-dir }}
         INPUT_COMPRESSION: ${{ inputs.compression }}
         INPUT_COMPRESSION_LEVEL: ${{ inputs.compression-level }}

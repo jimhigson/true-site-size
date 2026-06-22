@@ -65,6 +65,7 @@ const main = async () => {
     steps: journeyInput ? JSON.parse(journeyInput) : scenarioSugar,
     installCommand: input("install-command", "", { allowEmpty: true }),
     buildCommand: input("build-command", "npm run build", { allowEmpty: true }),
+    cleanCommand: input("clean-command", ""),
     serveDir: input("serve-dir", "dist"),
     compression: input("compression", "gzip"),
     // null = use the encoding's default (gzip 8, br 4, zstd 6); otherwise a
@@ -197,6 +198,12 @@ const main = async () => {
       logBreakdown("base (cached)", base);
     } else {
       console.log(`[true-site-size] measuring base (${compareRef})...`);
+      // clear head's build state from the workspace before building the base.
+      // the base checks out into a worktree *inside* the workspace, so node's
+      // upward module resolution (and npm's ancestor node_modules/.bin) would
+      // otherwise let the base build silently inherit head's installed deps -
+      // leaking head into the base measurement. eg clean-command: rm -rf node_modules
+      if (config.cleanCommand) run(config.cleanCommand, workspace);
       const baseDir = join(workspace, ".true-site-size-base");
       rmSync(baseDir, { recursive: true, force: true });
       run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);

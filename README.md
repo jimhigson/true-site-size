@@ -172,6 +172,7 @@ Only fully-successful base measurements are cached.
 | `scenarios` | — | sugar: JSON array of `{name, url, mark}`, each a goto+row |
 | `install-command` | `""` | run in each checkout before building (empty skips) |
 | `build-command` | `npm run build` | produces the site (empty skips) |
+| `clean-command` | `""` | run in the workspace between the head and base builds to isolate them, eg `rm -rf node_modules` — the base builds in a workspace subdir and can otherwise inherit head's `node_modules` |
 | `serve-dir` | `dist` | directory served after building |
 | `compression` | `gzip` | simulate the host: `gzip`, `br`, `zstd` or `none` (`zstd` needs Node ≥ 22.15) |
 | `compression-level` | per codec | level for the chosen encoding, or `max`; ranges gzip 0–9, br 0–11, zstd 1–22; empty uses gzip 8 / br 4 / zstd 6 |

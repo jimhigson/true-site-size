@@ -32372,6 +32372,7 @@ var main = async () => {
     steps: journeyInput ? JSON.parse(journeyInput) : scenarioSugar,
     installCommand: input("install-command", "", { allowEmpty: true }),
     buildCommand: input("build-command", "npm run build", { allowEmpty: true }),
+    cleanCommand: input("clean-command", ""),
     serveDir: input("serve-dir", "dist"),
     compression: input("compression", "gzip"),
     // null = use the encoding's default (gzip 8, br 4, zstd 6); otherwise a
@@ -32470,6 +32471,7 @@ var main = async () => {
       logBreakdown("base (cached)", base);
     } else {
       console.log(`[true-site-size] measuring base (${compareRef})...`);
+      if (config.cleanCommand) run(config.cleanCommand, workspace);
       const baseDir = join3(workspace, ".true-site-size-base");
       rmSync2(baseDir, { recursive: true, force: true });
       run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
