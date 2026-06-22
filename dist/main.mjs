@@ -28218,7 +28218,7 @@ var require_limiter = __commonJS({
 var require_permessage_deflate = __commonJS({
   "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/permessage-deflate.js"(exports, module) {
     "use strict";
-    var zlib = __require("zlib");
+    var zlib2 = __require("zlib");
     var bufferUtil = require_buffer_util();
     var Limiter = require_limiter();
     var { kStatusCode, NOOP } = require_constants();
@@ -28484,8 +28484,8 @@ var require_permessage_deflate = __commonJS({
         const endpoint = this._isServer ? "client" : "server";
         if (!this._inflate) {
           const key = `${endpoint}_max_window_bits`;
-          const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
-          this._inflate = zlib.createInflateRaw({
+          const windowBits = typeof this.params[key] !== "number" ? zlib2.Z_DEFAULT_WINDOWBITS : this.params[key];
+          this._inflate = zlib2.createInflateRaw({
             ...this._options.zlibInflateOptions,
             windowBits
           });
@@ -28535,8 +28535,8 @@ var require_permessage_deflate = __commonJS({
         const endpoint = this._isServer ? "server" : "client";
         if (!this._deflate) {
           const key = `${endpoint}_max_window_bits`;
-          const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
-          this._deflate = zlib.createDeflateRaw({
+          const windowBits = typeof this.params[key] !== "number" ? zlib2.Z_DEFAULT_WINDOWBITS : this.params[key];
+          this._deflate = zlib2.createDeflateRaw({
             ...this._options.zlibDeflateOptions,
             windowBits
           });
@@ -28547,7 +28547,7 @@ var require_permessage_deflate = __commonJS({
         }
         this._deflate[kCallback] = callback;
         this._deflate.write(data);
-        this._deflate.flush(zlib.Z_SYNC_FLUSH, () => {
+        this._deflate.flush(zlib2.Z_SYNC_FLUSH, () => {
           if (!this._deflate) {
             return;
           }
@@ -29484,8 +29484,8 @@ var require_sender = __commonJS({
        * @param {Function} [cb] Callback
        * @private
        */
-      dispatch(data, compress, options, cb) {
-        if (!compress) {
+      dispatch(data, compress2, options, cb) {
+        if (!compress2) {
           this.sendFrame(_Sender.frame(data, options), cb);
           return;
         }
@@ -31771,6 +31771,7 @@ import { createSecureServer } from "node:http2";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
+import * as zlib from "node:zlib";
 import { readFileSync } from "node:fs";
 var certDir = fileURLToPath(new URL("./cert/", import.meta.url));
 var certSpkiHash = createHash("sha256").update(
@@ -31794,6 +31795,53 @@ var mimeTypes = {
   ".wasm": "application/wasm",
   ".webmanifest": "application/manifest+json"
 };
+var encodings = {
+  gzip: { name: "gzip", min: 0, max: 9, default: 8 },
+  br: { name: "brotli", min: 0, max: 11, default: 4 },
+  zstd: { name: "zstd", min: 1, max: 22, default: 6 },
+  none: { name: "uncompressed", min: 0, max: 0, default: 0 }
+};
+var levelFor = (compression, level) => {
+  const enc = encodings[compression];
+  if (level === null || level === void 0 || level === "") return enc.default;
+  if (level === "max") return enc.max;
+  return Number(level);
+};
+var assertCompressionSupported = (compression, level = null) => {
+  const enc = encodings[compression];
+  if (!enc) {
+    throw new Error(
+      `unknown compression "${compression}" - use one of: ${Object.keys(encodings).join(", ")}`
+    );
+  }
+  if (compression === "zstd" && typeof zlib.zstdCompressSync !== "function") {
+    throw new Error(
+      `compression "zstd" needs Node >= 22.15 (or >= 23.8) for zlib.zstdCompressSync, but this runner has ${process.version}. Upgrade Node (eg actions/setup-node with node-version: 22) or choose gzip, br or none.`
+    );
+  }
+  if (level !== null && level !== "max" && compression !== "none") {
+    const n = Number(level);
+    if (!Number.isInteger(n) || n < enc.min || n > enc.max) {
+      throw new Error(
+        `compression-level must be an integer ${enc.min}-${enc.max} or "max" for ${enc.name}, got "${level}"`
+      );
+    }
+  }
+};
+var compress = (raw, encoding, level) => {
+  const lvl = levelFor(encoding, level);
+  if (encoding === "br") {
+    return brotliCompressSync(raw, {
+      params: { [constants.BROTLI_PARAM_QUALITY]: lvl }
+    });
+  }
+  if (encoding === "zstd") {
+    return zlib.zstdCompressSync(raw, {
+      params: { [constants.ZSTD_c_compressionLevel]: lvl }
+    });
+  }
+  return gzipSync(raw, { level: lvl });
+};
 var compressible = /* @__PURE__ */ new Set([
   "text/html",
   "text/javascript",
@@ -31802,7 +31850,9 @@ var compressible = /* @__PURE__ */ new Set([
   "image/svg+xml",
   "application/manifest+json"
 ]);
-var serve = (dir, compression) => new Promise((resolve2) => {
+var serve = (dir, compression, level = null) => new Promise((resolve2) => {
+  let encodingSeen = false;
+  let acceptEncodingSample = null;
   const server = createSecureServer(
     {
       cert: readFileSync(join(certDir, "localhost-cert.pem")),
@@ -31830,6 +31880,8 @@ var serve = (dir, compression) => new Promise((resolve2) => {
       }
       const type = mimeTypes[extname(filePath)] ?? "application/octet-stream";
       const acceptsEncoding = req.headers["accept-encoding"] ?? "";
+      if (acceptEncodingSample === null) acceptEncodingSample = acceptsEncoding;
+      if (acceptsEncoding.includes(compression)) encodingSeen = true;
       const wantCompression = compression !== "none" && compressible.has(type) && acceptsEncoding.includes(compression);
       res.setHeader("Content-Type", type);
       res.setHeader("Cache-Control", "max-age=3600");
@@ -31838,9 +31890,7 @@ var serve = (dir, compression) => new Promise((resolve2) => {
         return;
       }
       const raw = readFileSync(filePath);
-      const body = compression === "br" ? brotliCompressSync(raw, {
-        params: { [constants.BROTLI_PARAM_QUALITY]: 9 }
-      }) : gzipSync(raw, { level: 9 });
+      const body = compress(raw, compression, level);
       res.setHeader("Content-Encoding", compression);
       res.end(body);
     }
@@ -31849,7 +31899,22 @@ var serve = (dir, compression) => new Promise((resolve2) => {
     const { port } = server.address();
     resolve2({
       origin: `https://localhost:${port}`,
-      close: () => new Promise((r) => server.close(r))
+      close: () => new Promise((r) => server.close(r)),
+      /**
+       * throw if the measuring browser never advertised the requested
+       * encoding - it cannot decode it, so the run silently fell back to
+       * uncompressed bytes and the measurement is invalid. No-op for
+       * compression "none", and for a run that made no requests (whose own
+       * errors are the real story).
+       */
+      assertBrowserDecodes: () => {
+        if (compression === "none" || acceptEncodingSample === null || encodingSeen) {
+          return;
+        }
+        throw new Error(
+          `the measuring browser never advertised "${compression}" in its Accept-Encoding (it sent "${acceptEncodingSample}"), so it cannot decode ${encodings[compression].name} responses - the measured bytes would be the uncompressed fallback, not real. Use a browser that supports it (zstd needs Chrome >= 123) or set compression to one it advertises.`
+        );
+      }
     });
   });
 });
@@ -32283,12 +32348,14 @@ var buildAndMeasure = async (checkoutDir, config) => {
   if (!existsSync3(serveDir)) {
     throw new Error(`serve-dir does not exist after build: ${serveDir}`);
   }
-  const server = await serve(serveDir, config.compression);
+  const server = await serve(serveDir, config.compression, config.compressionLevel);
   try {
     const steps = config.steps.map(
       (s) => s.goto !== void 0 ? { ...s, goto: new URL(s.goto, server.origin).href } : s
     );
-    return await measure(steps, config);
+    const results = await measure(steps, config);
+    server.assertBrowserDecodes();
+    return results;
   } finally {
     await server.close();
   }
@@ -32307,6 +32374,12 @@ var main = async () => {
     buildCommand: input("build-command", "npm run build", { allowEmpty: true }),
     serveDir: input("serve-dir", "dist"),
     compression: input("compression", "gzip"),
+    // null = use the encoding's default (gzip 8, br 4, zstd 6); otherwise a
+    // number or the string "max" (resolved to the codec's maximum in serve)
+    compressionLevel: (() => {
+      const raw = input("compression-level", "").trim().toLowerCase();
+      return raw === "" ? null : raw;
+    })(),
     runs: Number(input("runs", "2")),
     stepTimeoutMs: Number(input("step-timeout-ms", "20000")),
     settleTimeoutMs: Number(input("settle-timeout-ms", "30000")),
@@ -32331,6 +32404,7 @@ var main = async () => {
       "nothing to measure - set the `journey` or `scenarios` input"
     );
   }
+  assertCompressionSupported(config.compression, config.compressionLevel);
   setTimeout(() => {
     console.error(
       `[true-site-size] hard timeout: the whole action did not finish within ${config.timeoutMs}ms (timeout-ms input) - failing rather than hanging`
@@ -32378,6 +32452,7 @@ var main = async () => {
       JSON.stringify({
         steps: config.steps,
         compression: config.compression,
+        compressionLevel: config.compressionLevel,
         runs: config.runs,
         settleMs: config.settleMs,
         ignorePatterns: config.ignorePatterns,

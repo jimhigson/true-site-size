@@ -6,14 +6,23 @@ on:
 jobs:
   fixture:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # cover every supported encoding; zstd needs Node >= 22.15
+        compression: [gzip, br, zstd, none]
     steps:
       - uses: actions/checkout@v4
+      # pin a Node new enough for zstd (zlib.zstdCompressSync landed in 22.15)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - uses: ./
         with:
           build-command: ""
           serve-dir: fixtures/site
           comment: "false"
           runs: "2"
+          compression: ${{ matrix.compression }}
           ignore-url-patterns: '["varies\\.json$"]'
           journey: |
             [

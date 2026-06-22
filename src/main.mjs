@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { formatComment, postComment } from "./comment.mjs";
 import { formatBytes, formatDuration } from "./formatBytes.mjs";
 import { measure } from "./measure.mjs";
-import { serve } from "./serve.mjs";
+import { assertCompressionSupported, serve } from "./serve.mjs";
 
 /**
  * read an action input (the INPUT_* convention used by github actions).
@@ -34,14 +34,18 @@ const buildAndMeasure = async (checkoutDir, config) => {
   if (!existsSync(serveDir)) {
     throw new Error(`serve-dir does not exist after build: ${serveDir}`);
   }
-  const server = await serve(serveDir, config.compression);
+  const server = await serve(serveDir, config.compression, config.compressionLevel);
   try {
     const steps = config.steps.map((s) =>
       s.goto !== undefined ?
         { ...s, goto: new URL(s.goto, server.origin).href }
       : s,
     );
-    return await measure(steps, config);
+    const results = await measure(steps, config);
+    // the browser must actually be able to decode the requested compression;
+    // otherwise it received the uncompressed fallback and the numbers are wrong
+    server.assertBrowserDecodes();
+    return results;
   } finally {
     await server.close();
   }
@@ -63,6 +67,12 @@ const main = async () => {
     buildCommand: input("build-command", "npm run build", { allowEmpty: true }),
     serveDir: input("serve-dir", "dist"),
     compression: input("compression", "gzip"),
+    // null = use the encoding's default (gzip 8, br 4, zstd 6); otherwise a
+    // number or the string "max" (resolved to the codec's maximum in serve)
+    compressionLevel: (() => {
+      const raw = input("compression-level", "").trim().toLowerCase();
+      return raw === "" ? null : raw;
+    })(),
     runs: Number(input("runs", "2")),
     stepTimeoutMs: Number(input("step-timeout-ms", "20000")),
     settleTimeoutMs: Number(input("settle-timeout-ms", "30000")),
@@ -87,6 +97,9 @@ const main = async () => {
       "nothing to measure - set the `journey` or `scenarios` input",
     );
   }
+  // fail fast on a bad/unsupported compression choice or out-of-range level,
+  // before any expensive build runs (zstd needs Node >= 22.15)
+  assertCompressionSupported(config.compression, config.compressionLevel);
 
   // whole-process watchdog: the individual waits are all capped, but this
   // guarantees that nothing - including bugs in this action - can hang a ci
@@ -158,6 +171,7 @@ const main = async () => {
         JSON.stringify({
           steps: config.steps,
           compression: config.compression,
+          compressionLevel: config.compressionLevel,
           runs: config.runs,
           settleMs: config.settleMs,
           ignorePatterns: config.ignorePatterns,

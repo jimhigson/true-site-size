@@ -58,8 +58,18 @@ inputs:
     description: directory (relative to the checkout) to serve after building
     default: "dist"
   compression:
-    description: simulate the production host's compression - gzip, br or none
+    description: >
+      simulate the production host's compression - gzip, br, zstd or none.
+      zstd requires the runner's Node to be >= 22.15 (or >= 23.8); gzip, br
+      and none work on any supported Node.
     default: "gzip"
+  compression-level:
+    description: >
+      compression level for the chosen encoding, or "max" for the codec's
+      maximum. Empty uses a moderate default per codec: gzip 8, br 4, zstd 6.
+      Valid ranges: gzip 0-9, br 0-11, zstd 1-22. Ignored when compression is
+      none.
+    default: ""
   runs:
     description: >
       repeat count. Runs are expected to be byte-identical - the extra run is
@@ -129,6 +139,7 @@ runs:
         INPUT_BUILD_COMMAND: ${{ inputs.build-command }}
         INPUT_SERVE_DIR: ${{ inputs.serve-dir }}
         INPUT_COMPRESSION: ${{ inputs.compression }}
+        INPUT_COMPRESSION_LEVEL: ${{ inputs.compression-level }}
         INPUT_RUNS: ${{ inputs.runs }}
         INPUT_SETTLE_MS: ${{ inputs.settle-ms }}
         INPUT_MARK_TIMEOUT_MS: ${{ inputs.mark-timeout-ms }}

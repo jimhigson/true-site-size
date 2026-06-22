@@ -128,7 +128,19 @@ trusts it via spki pinning, which - unlike a blanket ignore-certificate-errors
 multiplexing make both byte counts and request timing match what a production
 host transfers — http/1.1 serving would overstate per-request overhead and
 accidentally serialise parallel fetches. Response bodies are compressed per
-the `compression` input.
+the `compression` input: `gzip`, `br`, `zstd` or `none`. The level defaults to
+a moderate setting per codec — gzip 8, brotli 4, zstd 6 — rather than each
+codec's build-time maximum. Override with `compression-level`: a number
+(ranges gzip 0–9, br 0–11, zstd 1–22) or `max` for the ceiling (gzip 9,
+brotli 11, zstd 22).
+
+`zstd` requires the runner's Node to be **≥ 22.15** (or ≥ 23.8) — earlier
+versions lack zstd support in Node's `zlib`, and the action fails fast with a
+clear message if asked for `zstd` on an older Node. Pin a new enough Node with
+`actions/setup-node` (`node-version: 22`) before this step. `gzip`, `br` and
+`none` work on any supported Node. The measuring browser also needs to
+advertise `zstd` in `Accept-Encoding` (Chrome ≥ 123), which current runner
+images satisfy.
 
 ## What lands in the action log
 
@@ -161,7 +173,8 @@ Only fully-successful base measurements are cached.
 | `install-command` | `""` | run in each checkout before building (empty skips) |
 | `build-command` | `npm run build` | produces the site (empty skips) |
 | `serve-dir` | `dist` | directory served after building |
-| `compression` | `gzip` | simulate the host: `gzip`, `br` or `none` |
+| `compression` | `gzip` | simulate the host: `gzip`, `br`, `zstd` or `none` (`zstd` needs Node ≥ 22.15) |
+| `compression-level` | per codec | level for the chosen encoding, or `max`; ranges gzip 0–9, br 0–11, zstd 1–22; empty uses gzip 8 / br 4 / zstd 6 |
 | `runs` | `2` | repeats; agreement within tolerance is the determinism check |
 | `spread-tolerance-bytes` | `512` | spread treated as h2 protocol noise |
 | `minimum-change-threshold` | `1` | deltas below this many bytes show as unchanged (as compressed-size-action) |
