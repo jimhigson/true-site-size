@@ -202,7 +202,8 @@ const main = async () => {
       // the base checks out into a worktree *inside* the workspace, so node's
       // upward module resolution (and npm's ancestor node_modules/.bin) would
       // otherwise let the base build silently inherit head's installed deps -
-      // leaking head into the base measurement. eg clean-command: pnpm clean
+      // leaking head into the base measurement. eg clean-command: pnpm purge
+      // (purge wipes node_modules; `pnpm clean` would defer to a user clean script)
       if (config.cleanCommand) run(config.cleanCommand, workspace);
       const baseDir = join(workspace, ".true-site-size-base");
       rmSync(baseDir, { recursive: true, force: true });
