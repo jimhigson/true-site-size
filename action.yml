@@ -59,7 +59,7 @@ inputs:
       command run in the workspace between the head and base builds (empty to
       skip). The base checks out into a worktree inside the workspace, so
       without this its build can inherit head's node_modules via upward module
-      resolution; eg "pnpm purge" isolates them.
+      resolution; eg "pnpm clean" isolates them.
     default: ""
   serve-dir:
     description: directory (relative to the checkout) to serve after building
