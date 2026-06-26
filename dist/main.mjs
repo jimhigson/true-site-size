@@ -31638,7 +31638,8 @@ var formatComment = (head, bases, {
   commentKey,
   stripHash,
   spreadToleranceBytes = 0,
-  minimumChangeThreshold = 1
+  minimumChangeThreshold = 1,
+  collapsibleBreakdown = true
 }) => {
   const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
   const fileOf = (url) => {
@@ -31660,9 +31661,9 @@ var formatComment = (head, bases, {
     if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "\u{1F7F0}";
     return `${d > 0 ? "\u{1F4C8} +" : "\u{1F4C9} -"}${formatBytes(Math.abs(d))}`;
   };
-  const detailsFor = (h, b) => {
+  const fileDiff = (h, b) => {
     const br = baseRowFor(b, h.name);
-    if (h.error || !br || br.error) return "";
+    if (h.error || !br || br.error) return null;
     const headFiles = filesOf(h.requestLog);
     const baseFiles = filesOf(br.requestLog);
     const all = [.../* @__PURE__ */ new Set([...headFiles.keys(), ...baseFiles.keys()])];
@@ -31673,23 +31674,40 @@ var formatComment = (head, bases, {
     }).filter(
       ({ delta }) => delta !== 0 && Math.abs(delta) >= minimumChangeThreshold
     ).sort((a, z) => Math.abs(z.delta) - Math.abs(a.delta));
-    const unchangedCount = all.length - changed.length;
-    if (changed.length === 0) {
-      return `
-<details><summary>${h.name} vs ${b.ref}: no per-file changes (${unchangedCount} files identical)</summary></details>`;
-    }
+    return { changed, unchangedCount: all.length - changed.length };
+  };
+  const fileTable = (b, changed) => {
     const fileRows = changed.map(({ f, hb, bb }) => {
       const deltaCell = bb === void 0 ? `\u{1F4C8} +${formatBytes(hb)}` : hb === void 0 ? `\u{1F4C9} -${formatBytes(bb)}` : formatDelta(hb, bb, minimumChangeThreshold);
       const note = bb === void 0 ? " \u{1F195}" : hb === void 0 ? " \u{1F5D1}\uFE0F" : "";
       return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaCell} |`;
     });
-    return `
-<details><summary>${h.name} vs ${b.ref}: ${changed.length} file(s) changed, ${unchangedCount} identical</summary>
-
-| file | PR | ${b.ref} | delta |
+    return `| file | PR | ${b.ref} | delta |
 | --- | --- | --- | --- |
-${fileRows.join("\n")}
-</details>`;
+${fileRows.join("\n")}`;
+  };
+  const breakdownFor = (b) => {
+    if (!b.results) return "";
+    const entries = head.map((h) => {
+      const diff = fileDiff(h, b);
+      if (!diff) return null;
+      if (diff.changed.length === 0) {
+        return `**${h.name}**: no per-file changes (${diff.unchangedCount} files identical)`;
+      }
+      const summary = `**${h.name}**: ${diff.changed.length} file(s) changed, ${diff.unchangedCount} identical`;
+      const table = fileTable(b, diff.changed);
+      return collapsibleBreakdown ? `<details><summary>${summary}</summary>
+
+${table}
+</details>` : `${summary}
+
+${table}`;
+    }).filter(Boolean);
+    return entries.length ? `
+#### ${baseHeader(b)}
+
+${entries.join("\n\n")}
+` : "";
   };
   const headerCells = ["", "PR", ...bases.map(baseHeader)];
   const sepCells = headerCells.map(() => "---");
@@ -31738,7 +31756,7 @@ ${fileRows.join("\n")}
 > \u26A0\uFE0F **determinism check failed**: repeat runs transferred different bytes (max spread ${formatBytes(maxSpread)}, tolerance ${formatBytes(spreadToleranceBytes)}). Something loads non-deterministically - do not trust deltas until investigated. The per-request breakdown in the run logs shows which requests varied.` : maxSpread > 0 ? `
 <sub>runs varied by up to ${formatBytes(maxSpread)} (h2 header-compression noise, within the ${formatBytes(spreadToleranceBytes)} tolerance) - the minimum is reported</sub>` : "";
   const comparedNote = bases.length === 0 ? "\n<sub>no base ref to compare against - showing head only</sub>" : "";
-  const detailsBlocks = bases.flatMap((b) => head.map((h) => detailsFor(h, b))).join("");
+  const detailsBlocks = bases.map(breakdownFor).join("");
   return `${markerFor(commentKey)}
 ### \u{1F4E1} real network cost to ready${commentKey ? ` (${commentKey})` : ""}
 
@@ -32422,6 +32440,9 @@ var main = async () => {
       allowEmpty: true
     }),
     comment: input("comment", "true") === "true",
+    // collapse the per-file breakdown into expandable <details> (true) or show
+    // it inline (false); unchanged rows are always a plain line either way
+    collapsibleBreakdown: input("collapse-breakdown", "true") === "true",
     token: input("github-token", process.env.GITHUB_TOKEN ?? "")
   };
   if (config.steps.length === 0) {
@@ -32553,7 +32574,8 @@ var main = async () => {
     commentKey: config.commentKey,
     stripHash: config.stripHash,
     spreadToleranceBytes: config.spreadToleranceBytes,
-    minimumChangeThreshold: config.minimumChangeThreshold
+    minimumChangeThreshold: config.minimumChangeThreshold,
+    collapsibleBreakdown: config.collapsibleBreakdown
   });
   console.log(body);
   const issueNumber = event.pull_request?.number;

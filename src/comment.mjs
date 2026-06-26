@@ -45,6 +45,7 @@ export const formatComment = (
     stripHash,
     spreadToleranceBytes = 0,
     minimumChangeThreshold = 1,
+    collapsibleBreakdown = true,
   },
 ) => {
   const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
@@ -74,10 +75,11 @@ export const formatComment = (
     return `${d > 0 ? "📈 +" : "📉 -"}${formatBytes(Math.abs(d))}`;
   };
 
-  /** collapsed per-file breakdown of one head row vs one base ref */
-  const detailsFor = (h, b) => {
+  /** per-file diff of a head row vs a base ref: { changed, unchangedCount },
+   *  or null when the row or base could not be measured */
+  const fileDiff = (h, b) => {
     const br = baseRowFor(b, h.name);
-    if (h.error || !br || br.error) return "";
+    if (h.error || !br || br.error) return null;
     const headFiles = filesOf(h.requestLog);
     const baseFiles = filesOf(br.requestLog);
     const all = [...new Set([...headFiles.keys(), ...baseFiles.keys()])];
@@ -91,10 +93,11 @@ export const formatComment = (
         ({ delta }) => delta !== 0 && Math.abs(delta) >= minimumChangeThreshold,
       )
       .sort((a, z) => Math.abs(z.delta) - Math.abs(a.delta));
-    const unchangedCount = all.length - changed.length;
-    if (changed.length === 0) {
-      return `\n<details><summary>${h.name} vs ${b.ref}: no per-file changes (${unchangedCount} files identical)</summary></details>`;
-    }
+    return { changed, unchangedCount: all.length - changed.length };
+  };
+
+  /** the markdown table of a row's changed files vs a base ref */
+  const fileTable = (b, changed) => {
     const fileRows = changed.map(({ f, hb, bb }) => {
       const deltaCell =
         bb === undefined ? `📈 +${formatBytes(hb)}`
@@ -106,7 +109,34 @@ export const formatComment = (
         : "";
       return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaCell} |`;
     });
-    return `\n<details><summary>${h.name} vs ${b.ref}: ${changed.length} file(s) changed, ${unchangedCount} identical</summary>\n\n| file | PR | ${b.ref} | delta |\n| --- | --- | --- | --- |\n${fileRows.join("\n")}\n</details>`;
+    return `| file | PR | ${b.ref} | delta |\n| --- | --- | --- | --- |\n${fileRows.join("\n")}`;
+  };
+
+  /**
+   * per-base-ref breakdown: a heading, then one entry per row. A row with no
+   * changes is a plain line (nothing to reveal by expanding); a changed row is
+   * a collapsible <details> by default, or shown inline when
+   * collapsibleBreakdown is false. Empty when the base could not be measured.
+   */
+  const breakdownFor = (b) => {
+    if (!b.results) return "";
+    const entries = head
+      .map((h) => {
+        const diff = fileDiff(h, b);
+        if (!diff) return null;
+        if (diff.changed.length === 0) {
+          return `**${h.name}**: no per-file changes (${diff.unchangedCount} files identical)`;
+        }
+        const summary = `**${h.name}**: ${diff.changed.length} file(s) changed, ${diff.unchangedCount} identical`;
+        const table = fileTable(b, diff.changed);
+        return collapsibleBreakdown ?
+            `<details><summary>${summary}</summary>\n\n${table}\n</details>`
+          : `${summary}\n\n${table}`;
+      })
+      .filter(Boolean);
+    return entries.length ?
+        `\n#### ${baseHeader(b)}\n\n${entries.join("\n\n")}\n`
+      : "";
   };
 
   // table: row label, the PR value, then one delta column per base ref. Each
@@ -193,10 +223,8 @@ export const formatComment = (
       "\n<sub>no base ref to compare against - showing head only</sub>"
     : "";
 
-  // one per-file breakdown per (base ref, row); errored bases/rows yield none
-  const detailsBlocks = bases
-    .flatMap((b) => head.map((h) => detailsFor(h, b)))
-    .join("");
+  // per-file breakdown grouped under a heading per base ref
+  const detailsBlocks = bases.map(breakdownFor).join("");
 
   return `${markerFor(commentKey)}
 ### 📡 real network cost to ready${commentKey ? ` (${commentKey})` : ""}

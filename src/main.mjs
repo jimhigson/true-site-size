@@ -91,6 +91,9 @@ const main = async () => {
       allowEmpty: true,
     }),
     comment: input("comment", "true") === "true",
+    // collapse the per-file breakdown into expandable <details> (true) or show
+    // it inline (false); unchanged rows are always a plain line either way
+    collapsibleBreakdown: input("collapse-breakdown", "true") === "true",
     token: input("github-token", process.env.GITHUB_TOKEN ?? ""),
   };
   if (config.steps.length === 0) {
@@ -289,6 +292,7 @@ const main = async () => {
     stripHash: config.stripHash,
     spreadToleranceBytes: config.spreadToleranceBytes,
     minimumChangeThreshold: config.minimumChangeThreshold,
+    collapsibleBreakdown: config.collapsibleBreakdown,
   });
   console.log(body);
 

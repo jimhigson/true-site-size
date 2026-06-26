@@ -98,6 +98,12 @@ inputs:
   comment:
     description: post/update a PR comment with the results
     default: "true"
+  collapse-breakdown:
+    description: >
+      collapse each ref's per-file breakdown into an expandable <details>
+      (true) or show it inline (false). Rows with no changes are always a
+      plain line, since there is nothing to reveal by expanding.
+    default: "true"
   comment-key:
     description: >
       distinguishes multiple uses on one PR - each key maintains its own
@@ -155,6 +161,7 @@ runs:
         INPUT_MARK_TIMEOUT_MS: ${{ inputs.mark-timeout-ms }}
         INPUT_BASE_REFS: ${{ inputs.base-refs }}
         INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_COLLAPSE_BREAKDOWN: ${{ inputs.collapse-breakdown }}
         INPUT_COMMENT_KEY: ${{ inputs.comment-key }}
         INPUT_STRIP_HASH: ${{ inputs.strip-hash }}
         INPUT_SPREAD_TOLERANCE_BYTES: ${{ inputs.spread-tolerance-bytes }}

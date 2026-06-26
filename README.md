@@ -114,10 +114,13 @@ for anything exotic.
   the exact commit measured and is
   annotated with `git describe` (eg a branch shown as the release it descends
   from). Deltas smaller than `minimum-change-threshold` bytes show as unchanged
-- a collapsed **per-file breakdown** per base ref: files whose transfer
-  changed, matched across builds with content hashes stripped (`strip-hash`),
-  new (🆕) and no-longer-loaded (🗑️) files flagged, identical files counted but
-  hidden — "where did the bytes come from?" without leaving the PR
+- a **per-file breakdown** grouped under a heading per base ref, with one
+  entry per row: files whose transfer changed, matched across builds with
+  content hashes stripped (`strip-hash`), new (🆕) and no-longer-loaded (🗑️)
+  files flagged, identical files counted — "where did the bytes come from?"
+  without leaving the PR. Changed rows are an expandable `<details>` by default
+  (`collapse-breakdown: false` shows them inline); rows with no changes are a
+  plain line, since there's nothing to reveal
 - 🔁 callouts for any url downloaded in full more than once in a segment — a
   standing duplicate-fetch bug in the app
 - rows that could not be measured say why, explicitly: `unable to measure -
@@ -224,6 +227,7 @@ Only fully-successful base measurements are cached.
 | `base-refs` | PR base | JSON array of refs to compare against, each its own column (linked + `git describe`'d), eg `["main", "v1.4.0"]`; empty uses the PR base branch |
 | `strip-hash` | vite-style | regex stripped from filenames for per-file matching; `""` disables |
 | `comment` | `true` | post/update the PR comment |
+| `collapse-breakdown` | `true` | collapse each ref's changed-file breakdown into an expandable `<details>`; `false` shows it inline |
 | `comment-key` | `""` | maintain separate comments per key |
 | `github-token` | `${{ github.token }}` | for the comment |
 
