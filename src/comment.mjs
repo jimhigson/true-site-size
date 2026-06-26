@@ -1,4 +1,4 @@
-import { formatBytes, formatDuration } from "./formatBytes.mjs";
+import { formatBytes } from "./formatBytes.mjs";
 
 /**
  * each comment-key maintains its own comment on the pr, so one workflow can
@@ -116,9 +116,7 @@ export const formatComment = (
 
   const rows = head.map((h) => {
     const prCell =
-      h.error ?
-        `⚠️ unable to measure - ${h.error}`
-      : `${formatBytes(h.bytes)} ${formatDuration(h.timeToMarkMs)}`;
+      h.error ? `⚠️ unable to measure - ${h.error}` : formatBytes(h.bytes);
     const baseCells = bases.map((b) => {
       if (h.error) return "—";
       const br = baseRowFor(b, h.name);

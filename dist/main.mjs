@@ -31694,7 +31694,7 @@ ${fileRows.join("\n")}
   const headerCells = ["", "PR", ...bases.map(baseHeader)];
   const sepCells = headerCells.map(() => "---");
   const rows = head.map((h) => {
-    const prCell = h.error ? `\u26A0\uFE0F unable to measure - ${h.error}` : `${formatBytes(h.bytes)} ${formatDuration(h.timeToMarkMs)}`;
+    const prCell = h.error ? `\u26A0\uFE0F unable to measure - ${h.error}` : formatBytes(h.bytes);
     const baseCells = bases.map((b) => {
       if (h.error) return "\u2014";
       const br = baseRowFor(b, h.name);
