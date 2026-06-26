@@ -31622,7 +31622,7 @@ var markerFor = (commentKey) => `<!-- true-site-size${commentKey ? `:${commentKe
 var formatDelta = (head, base, minimumChangeThreshold) => {
   if (head == null || base == null) return "\u2014";
   const d = head - base;
-  if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "\u2705";
+  if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "\u{1F7F0}";
   const pct = base === 0 ? 0 : Math.abs(d / base * 100);
   const arrow = d > 0 ? "\u{1F53A}" : "\u{1F7E2}";
   const sign = d > 0 ? "+" : "-";
@@ -31657,7 +31657,7 @@ var formatComment = (head, bases, {
   const baseRowFor = (b, name) => b.results?.find((r) => r.name === name);
   const deltaShort = (h, base) => {
     const d = h - base;
-    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "\u2705";
+    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "\u{1F7F0}";
     return `${d > 0 ? "\u{1F53A} +" : "\u{1F7E2} -"}${formatBytes(Math.abs(d))}`;
   };
   const detailsFor = (h, b) => {

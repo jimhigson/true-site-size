@@ -15,7 +15,7 @@ const formatDelta = (
 ) => {
   if (head == null || base == null) return "—";
   const d = head - base;
-  if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "✅";
+  if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "🟰";
   const pct = base === 0 ? 0 : Math.abs((d / base) * 100);
   const arrow = d > 0 ? "🔺" : "🟢";
   const sign = d > 0 ? "+" : "-";
@@ -70,7 +70,7 @@ export const formatComment = (
   /** compact delta for the summary table: arrow + signed bytes, no percentage */
   const deltaShort = (h, base) => {
     const d = h - base;
-    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "✅";
+    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "🟰";
     return `${d > 0 ? "🔺 +" : "🟢 -"}${formatBytes(Math.abs(d))}`;
   };
 
