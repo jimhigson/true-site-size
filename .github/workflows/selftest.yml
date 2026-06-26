@@ -23,6 +23,8 @@ jobs:
           comment: "false"
           runs: "2"
           compression: ${{ matrix.compression }}
+          # exercise the multi-ref base path (fetch + worktree + per-ref column)
+          base-refs: '["main"]'
           ignore-url-patterns: '["varies\\.json$"]'
           journey: |
             [

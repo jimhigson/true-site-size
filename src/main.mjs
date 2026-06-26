@@ -81,7 +81,7 @@ const main = async () => {
     ignorePatterns: JSON.parse(input("ignore-url-patterns", "[]")),
     settleMs: Number(input("settle-ms", "1500")),
     markTimeoutMs: Number(input("mark-timeout-ms", "60000")),
-    baseRef: input("base-ref", ""),
+    baseRefs: JSON.parse(input("base-refs", "[]")),
     commentKey: input("comment-key", ""),
     spreadToleranceBytes: Number(input("spread-tolerance-bytes", "512")),
     // same name, semantics and default as compressed-size-action: changes
@@ -143,96 +143,147 @@ const main = async () => {
   const head = await buildAndMeasure(workspace, config);
   logBreakdown("head", head);
 
-  // resolve the ref to compare against: explicit base-ref input, else the
-  // PR's base. Outside a PR (or with neither available) head is reported
-  // alone.
+  // the github event payload supplies the PR's base ref (the default to
+  // compare against) and its number (for commenting)
   const eventPath = process.env.GITHUB_EVENT_PATH;
   const event =
     eventPath && existsSync(eventPath) ?
       JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(eventPath, "utf8")))
     : {};
   const prBase = event.pull_request?.base?.ref;
-  const compareRef = config.baseRef || prBase;
+  // explicit base-refs, else the PR base as a single ref. Each is measured and
+  // shown as its own column. Outside a PR (or with neither) head stands alone.
+  const compareRefs =
+    config.baseRefs.length ? config.baseRefs
+    : prBase ? [prBase]
+    : [];
 
-  let base = null;
-  let baseLabel = "—";
-  if (compareRef) {
-    baseLabel = `\`${compareRef}\``;
-    run(`git fetch --no-tags --depth=1 origin ${compareRef}`, workspace);
-    const baseSha = execSync("git rev-parse FETCH_HEAD", { cwd: workspace })
-      .toString()
-      .trim();
+  const serverUrl = process.env.GITHUB_SERVER_URL;
+  const repo = process.env.GITHUB_REPOSITORY;
 
-    // base results are cached by (base sha, measurement config): the same
-    // base is typically re-measured on every push to a pr, and rebuilding it
-    // each time is the expensive half of the job. The cache dir is persisted
-    // between runs by actions/cache (see action.yml)
-    const configHash = createHash("sha256")
-      .update(
-        JSON.stringify({
-          steps: config.steps,
-          compression: config.compression,
-          compressionLevel: config.compressionLevel,
-          runs: config.runs,
-          settleMs: config.settleMs,
-          ignorePatterns: config.ignorePatterns,
-          serveDir: config.serveDir,
-          buildCommand: config.buildCommand,
-        }),
-      )
-      .digest("hex")
-      .slice(0, 16);
-    const cacheDir =
-      process.env.TRUE_SITE_SIZE_CACHE_DIR ??
-      (process.env.GITHUB_ACTIONS ?
-        join(homedir(), ".true-site-size-cache")
-      : null);
+  // every base ref shares the measurement config, so they share a cache key;
+  // the base sha distinguishes them on disk. The cache dir is persisted between
+  // runs by actions/cache (see action.yml), so repeat pushes to a pr skip the
+  // expensive rebuild of each unchanged base.
+  const configHash = createHash("sha256")
+    .update(
+      JSON.stringify({
+        steps: config.steps,
+        compression: config.compression,
+        compressionLevel: config.compressionLevel,
+        runs: config.runs,
+        settleMs: config.settleMs,
+        ignorePatterns: config.ignorePatterns,
+        serveDir: config.serveDir,
+        buildCommand: config.buildCommand,
+      }),
+    )
+    .digest("hex")
+    .slice(0, 16);
+  const cacheDir =
+    process.env.TRUE_SITE_SIZE_CACHE_DIR ??
+    (process.env.GITHUB_ACTIONS ?
+      join(homedir(), ".true-site-size-cache")
+    : null);
+
+  // clear head's build state from the workspace before the first base build.
+  // each base checks out into a worktree *inside* the workspace, so node's
+  // upward module resolution (and npm's ancestor node_modules/.bin) would
+  // otherwise let a base build silently inherit head's installed deps - leaking
+  // head into the base measurement. Run once: once removed it stays removed.
+  // eg clean-command: pnpm clean
+  let cleaned = false;
+  const cleanOnce = () => {
+    if (config.cleanCommand && !cleaned) {
+      run(config.cleanCommand, workspace);
+      cleaned = true;
+    }
+  };
+
+  /** fetch, identify and measure one base ref; never throws */
+  const measureBaseRef = async (ref) => {
+    const base = { ref, sha: null, describe: null, url: null };
+
+    // resolve the ref first: a bad ref name or fetch failure marks just this
+    // column rather than failing the whole run. --tags + a bounded depth let
+    // `git describe` name the ref relative to the nearest release tag (eg
+    // main -> v1.4.0-4-gabc123); the build only needs the tip
+    try {
+      run(`git fetch --tags --depth=100 origin ${ref}`, workspace);
+      base.sha = execSync("git rev-parse FETCH_HEAD", { cwd: workspace })
+        .toString()
+        .trim();
+    } catch {
+      console.warn(`[true-site-size] could not fetch base ref "${ref}"`);
+      base.error = `could not fetch ref "${ref}" - does it exist on origin?`;
+      base.results = null;
+      return base;
+    }
+    try {
+      base.describe = execSync("git describe --tags FETCH_HEAD", {
+        cwd: workspace,
+      })
+        .toString()
+        .trim();
+    } catch {
+      // no tag reachable within the fetched history - the linked sha stands in
+    }
+    base.url =
+      serverUrl && repo ? `${serverUrl}/${repo}/commit/${base.sha}` : null;
+
     const cacheFile =
-      cacheDir ? join(cacheDir, `base-${baseSha}-${configHash}.json`) : null;
-
+      cacheDir ? join(cacheDir, `base-${base.sha}-${configHash}.json`) : null;
     if (cacheFile && existsSync(cacheFile)) {
-      base = JSON.parse(readFileSync(cacheFile, "utf8"));
+      base.results = JSON.parse(readFileSync(cacheFile, "utf8"));
       console.log(
-        `[true-site-size] base (${compareRef} @ ${baseSha.slice(0, 9)}) loaded from cache - skipping its build and measurement`,
+        `[true-site-size] base (${ref} @ ${base.sha.slice(0, 9)}) loaded from cache - skipping its build and measurement`,
       );
-      logBreakdown("base (cached)", base);
-    } else {
-      console.log(`[true-site-size] measuring base (${compareRef})...`);
-      // clear head's build state from the workspace before building the base.
-      // the base checks out into a worktree *inside* the workspace, so node's
-      // upward module resolution (and npm's ancestor node_modules/.bin) would
-      // otherwise let the base build silently inherit head's installed deps -
-      // leaking head into the base measurement. eg clean-command: pnpm clean
-      if (config.cleanCommand) run(config.cleanCommand, workspace);
-      const baseDir = join(workspace, ".true-site-size-base");
-      rmSync(baseDir, { recursive: true, force: true });
+      logBreakdown(`base ${ref} (cached)`, base.results);
+      return base;
+    }
+
+    console.log(`[true-site-size] measuring base (${ref})...`);
+    cleanOnce();
+    const baseDir = join(workspace, ".true-site-size-base");
+    rmSync(baseDir, { recursive: true, force: true });
+    try {
       run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
+      base.results = await buildAndMeasure(baseDir, config);
+      logBreakdown(`base ${ref}`, base.results);
+      // only cache fully-successful measurements: an error row (eg a missing
+      // mark, or a flaky run) must not persist for this sha
+      if (cacheFile && base.results.every((r) => !r.error)) {
+        mkdirSync(cacheDir, { recursive: true });
+        writeFileSync(cacheFile, JSON.stringify(base.results));
+        console.log("[true-site-size] base result cached for future runs");
+      }
+    } catch (e) {
+      console.warn(
+        `[true-site-size] base ${ref} could not be measured (its column will say so): ${e.message}`,
+      );
+      base.error = e.message;
+      base.results = null;
+    } finally {
+      // remove the worktree if it was added; ignore if it never existed
       try {
-        base = await buildAndMeasure(baseDir, config);
-        logBreakdown("base", base);
-        // only cache fully-successful measurements: an error row (eg a
-        // missing mark, or a flaky run) must not persist for this sha
-        if (cacheFile && base.every((r) => !r.error)) {
-          mkdirSync(cacheDir, { recursive: true });
-          writeFileSync(cacheFile, JSON.stringify(base));
-          console.log("[true-site-size] base result cached for future runs");
-        }
-      } catch (e) {
-        console.warn(
-          `[true-site-size] base measurement failed (reporting head only): ${e.message}`,
-        );
-      } finally {
         run(`git worktree remove --force ${baseDir}`, workspace);
+      } catch {
+        // no worktree to remove (eg add failed) - nothing to clean up
       }
     }
+    return base;
+  };
+
+  const bases = [];
+  for (const ref of compareRefs) {
+    bases.push(await measureBaseRef(ref));
   }
 
   const runUrl =
     process.env.GITHUB_RUN_ID ?
       `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
     : undefined;
-  const body = formatComment(head, base, {
-    baseLabel,
+  const body = formatComment(head, bases, {
     runUrl,
     commentKey: config.commentKey,
     stripHash: config.stripHash,

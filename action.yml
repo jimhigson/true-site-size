@@ -88,11 +88,13 @@ inputs:
   mark-timeout-ms:
     description: ms to wait for each scenario's performance.mark
     default: "60000"
-  base-ref:
+  base-refs:
     description: >
-      override the ref to compare against (defaults to the PR base branch).
-      Useful for release PRs that should compare against the previous release.
-    default: ""
+      JSON array of refs to compare against (defaults to the PR base branch).
+      Each becomes its own column in the comment, linked to the exact commit
+      and annotated with git describe. eg ["main", "v1.4.0"] compares the PR
+      against both main and a release tag.
+    default: "[]"
   comment:
     description: post/update a PR comment with the results
     default: "true"
@@ -151,7 +153,7 @@ runs:
         INPUT_RUNS: ${{ inputs.runs }}
         INPUT_SETTLE_MS: ${{ inputs.settle-ms }}
         INPUT_MARK_TIMEOUT_MS: ${{ inputs.mark-timeout-ms }}
-        INPUT_BASE_REF: ${{ inputs.base-ref }}
+        INPUT_BASE_REFS: ${{ inputs.base-refs }}
         INPUT_COMMENT: ${{ inputs.comment }}
         INPUT_COMMENT_KEY: ${{ inputs.comment-key }}
         INPUT_STRIP_HASH: ${{ inputs.strip-hash }}

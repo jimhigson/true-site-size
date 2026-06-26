@@ -31628,8 +31628,12 @@ var formatDelta = (head, base, minimumChangeThreshold) => {
   const sign = d > 0 ? "+" : "-";
   return `${arrow} ${sign}${formatBytes(Math.abs(d))} (${sign}${pct.toFixed(1)}%)`;
 };
-var formatComment = (head, base, {
-  baseLabel,
+var baseHeader = (b) => {
+  const name = b.url ? `[${b.ref}](${b.url})` : `\`${b.ref}\``;
+  const desc = b.describe && b.describe !== b.ref ? ` \xB7 ${b.describe}` : "";
+  return `vs ${name}${desc}`;
+};
+var formatComment = (head, bases, {
   runUrl,
   commentKey,
   stripHash,
@@ -31650,10 +31654,17 @@ var formatComment = (head, base, {
     }
     return m;
   };
+  const baseRowFor = (b, name) => b.results?.find((r) => r.name === name);
+  const deltaShort = (h, base) => {
+    const d = h - base;
+    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "\u2705";
+    return `${d > 0 ? "\u{1F53A} +" : "\u{1F7E2} -"}${formatBytes(Math.abs(d))}`;
+  };
   const detailsFor = (h, b) => {
-    if (h.error || !b || b.error) return "";
+    const br = baseRowFor(b, h.name);
+    if (h.error || !br || br.error) return "";
     const headFiles = filesOf(h.requestLog);
-    const baseFiles = filesOf(b.requestLog);
+    const baseFiles = filesOf(br.requestLog);
     const all = [.../* @__PURE__ */ new Set([...headFiles.keys(), ...baseFiles.keys()])];
     const changed = all.map((f) => {
       const hb = headFiles.get(f);
@@ -31665,7 +31676,7 @@ var formatComment = (head, base, {
     const unchangedCount = all.length - changed.length;
     if (changed.length === 0) {
       return `
-<details><summary>${h.name}: no per-file changes (${unchangedCount} files identical)</summary></details>`;
+<details><summary>${h.name} vs ${b.ref}: no per-file changes (${unchangedCount} files identical)</summary></details>`;
     }
     const fileRows = changed.map(({ f, hb, bb }) => {
       const deltaCell = bb === void 0 ? `\u{1F53A} +${formatBytes(hb)}` : hb === void 0 ? `\u{1F7E2} -${formatBytes(bb)}` : formatDelta(hb, bb, minimumChangeThreshold);
@@ -31673,32 +31684,43 @@ var formatComment = (head, base, {
       return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaCell} |`;
     });
     return `
-<details><summary>${h.name}: ${changed.length} file(s) changed, ${unchangedCount} identical</summary>
+<details><summary>${h.name} vs ${b.ref}: ${changed.length} file(s) changed, ${unchangedCount} identical</summary>
 
-| file | PR | base | delta |
+| file | PR | ${b.ref} | delta |
 | --- | --- | --- | --- |
 ${fileRows.join("\n")}
 </details>`;
   };
+  const headerCells = ["", "PR", ...bases.map(baseHeader)];
+  const sepCells = headerCells.map(() => "---");
   const rows = head.map((h) => {
-    const b = base?.find((r) => r.name === h.name);
-    if (h.error) {
-      return `| ${h.name} | \u26A0\uFE0F unable to measure - ${h.error} | | |`;
-    }
-    const baseCell = b == null ? "\u2014" : b.error ? `\u26A0\uFE0F unable to measure - ${b.error}` : `${formatBytes(b.bytes)} ${formatDuration(b.timeToMarkMs)}`;
-    const deltaCell = formatDelta(
-      h.bytes,
-      b?.error ? null : b?.bytes,
-      minimumChangeThreshold
-    );
-    return `| ${h.name} | ${formatBytes(h.bytes)} ${formatDuration(h.timeToMarkMs)} | ${baseCell} | ${deltaCell} |`;
+    const prCell = h.error ? `\u26A0\uFE0F unable to measure - ${h.error}` : `${formatBytes(h.bytes)} ${formatDuration(h.timeToMarkMs)}`;
+    const baseCells = bases.map((b) => {
+      if (h.error) return "\u2014";
+      const br = baseRowFor(b, h.name);
+      if (!br || br.error) return "\u2014";
+      return `${deltaShort(h.bytes, br.bytes)} (${formatBytes(br.bytes)})`;
+    });
+    return `| ${[h.name, prCell, ...baseCells].join(" | ")} |`;
   });
   const totalHead = head.every((h) => !h.error) ? head.reduce((a, h) => a + h.bytes, 0) : null;
-  const totalBase = base && base.every((b) => !b.error) ? base.reduce((a, b) => a + b.bytes, 0) : null;
-  const totalRow = totalHead != null ? `| **total** | **${formatBytes(totalHead)}** | ${totalBase != null ? `**${formatBytes(totalBase)}**` : "\u2014"} | ${formatDelta(totalHead, totalBase, minimumChangeThreshold)} |` : "";
+  const totalRow = totalHead != null ? `| ${[
+    "**total**",
+    `**${formatBytes(totalHead)}**`,
+    ...bases.map((b) => {
+      const ok = b.results && b.results.every((r) => !r.error);
+      if (!ok) return "\u2014";
+      const totalBase = b.results.reduce((a, r) => a + r.bytes, 0);
+      return deltaShort(totalHead, totalBase);
+    })
+  ].join(" | ")} |` : "";
   const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);
   const ignoredNote = totalIgnored > 0 ? `
 <sub>${formatBytes(totalIgnored)} matched ignore-url-patterns and is not counted</sub>` : "";
+  const baseErrorNotes = bases.filter((b) => !b.results).map(
+    (b) => `
+> \u26A0\uFE0F base \`${b.ref}\` could not be measured${b.error ? ` - ${b.error}` : ""}`
+  ).join("");
   const duplicateNotes = head.filter((h) => !h.error).flatMap((h) => {
     const transfers = /* @__PURE__ */ new Map();
     for (const { url, bytes, ignored } of h.requestLog ?? []) {
@@ -31715,17 +31737,19 @@ ${fileRows.join("\n")}
   const spreadNote = maxSpread > spreadToleranceBytes ? `
 > \u26A0\uFE0F **determinism check failed**: repeat runs transferred different bytes (max spread ${formatBytes(maxSpread)}, tolerance ${formatBytes(spreadToleranceBytes)}). Something loads non-deterministically - do not trust deltas until investigated. The per-request breakdown in the run logs shows which requests varied.` : maxSpread > 0 ? `
 <sub>runs varied by up to ${formatBytes(maxSpread)} (h2 header-compression noise, within the ${formatBytes(spreadToleranceBytes)} tolerance) - the minimum is reported</sub>` : "";
+  const comparedNote = bases.length === 0 ? "\n<sub>no base ref to compare against - showing head only</sub>" : "";
+  const detailsBlocks = bases.flatMap((b) => head.map((h) => detailsFor(h, b))).join("");
   return `${markerFor(commentKey)}
 ### \u{1F4E1} real network cost to ready${commentKey ? ` (${commentKey})` : ""}
 
-True wire bytes from cold cache to \`performance.mark\`, network settled. Base is ${baseLabel}.
+True wire bytes from cold cache to \`performance.mark\`, network settled.
 
-| | PR | base | delta |
-| --- | --- | --- | --- |
+| ${headerCells.join(" | ")} |
+| ${sepCells.join(" | ")} |
 ${rows.join("\n")}
 ${totalRow}
-${spreadNote}${ignoredNote}${duplicateNotes}
-${head.map((h) => detailsFor(h, base?.find((r) => r.name === h.name))).join("")}
+${spreadNote}${ignoredNote}${baseErrorNotes}${duplicateNotes}${comparedNote}
+${detailsBlocks}
 ${runUrl ? `
 <sub>\u{1F4CB} per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
 <sub>measured by [true-site-size](https://github.com/jimhigson/true-site-size)</sub>
@@ -32388,7 +32412,7 @@ var main = async () => {
     ignorePatterns: JSON.parse(input("ignore-url-patterns", "[]")),
     settleMs: Number(input("settle-ms", "1500")),
     markTimeoutMs: Number(input("mark-timeout-ms", "60000")),
-    baseRef: input("base-ref", ""),
+    baseRefs: JSON.parse(input("base-refs", "[]")),
     commentKey: input("comment-key", ""),
     spreadToleranceBytes: Number(input("spread-tolerance-bytes", "512")),
     // same name, semantics and default as compressed-size-action: changes
@@ -32442,59 +32466,89 @@ var main = async () => {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   const event = eventPath && existsSync3(eventPath) ? JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(eventPath, "utf8"))) : {};
   const prBase = event.pull_request?.base?.ref;
-  const compareRef = config.baseRef || prBase;
-  let base = null;
-  let baseLabel = "\u2014";
-  if (compareRef) {
-    baseLabel = `\`${compareRef}\``;
-    run(`git fetch --no-tags --depth=1 origin ${compareRef}`, workspace);
-    const baseSha = execSync("git rev-parse FETCH_HEAD", { cwd: workspace }).toString().trim();
-    const configHash = createHash2("sha256").update(
-      JSON.stringify({
-        steps: config.steps,
-        compression: config.compression,
-        compressionLevel: config.compressionLevel,
-        runs: config.runs,
-        settleMs: config.settleMs,
-        ignorePatterns: config.ignorePatterns,
-        serveDir: config.serveDir,
-        buildCommand: config.buildCommand
-      })
-    ).digest("hex").slice(0, 16);
-    const cacheDir = process.env.TRUE_SITE_SIZE_CACHE_DIR ?? (process.env.GITHUB_ACTIONS ? join3(homedir(), ".true-site-size-cache") : null);
-    const cacheFile = cacheDir ? join3(cacheDir, `base-${baseSha}-${configHash}.json`) : null;
+  const compareRefs = config.baseRefs.length ? config.baseRefs : prBase ? [prBase] : [];
+  const serverUrl = process.env.GITHUB_SERVER_URL;
+  const repo = process.env.GITHUB_REPOSITORY;
+  const configHash = createHash2("sha256").update(
+    JSON.stringify({
+      steps: config.steps,
+      compression: config.compression,
+      compressionLevel: config.compressionLevel,
+      runs: config.runs,
+      settleMs: config.settleMs,
+      ignorePatterns: config.ignorePatterns,
+      serveDir: config.serveDir,
+      buildCommand: config.buildCommand
+    })
+  ).digest("hex").slice(0, 16);
+  const cacheDir = process.env.TRUE_SITE_SIZE_CACHE_DIR ?? (process.env.GITHUB_ACTIONS ? join3(homedir(), ".true-site-size-cache") : null);
+  let cleaned = false;
+  const cleanOnce = () => {
+    if (config.cleanCommand && !cleaned) {
+      run(config.cleanCommand, workspace);
+      cleaned = true;
+    }
+  };
+  const measureBaseRef = async (ref) => {
+    const base = { ref, sha: null, describe: null, url: null };
+    try {
+      run(`git fetch --tags --depth=100 origin ${ref}`, workspace);
+      base.sha = execSync("git rev-parse FETCH_HEAD", { cwd: workspace }).toString().trim();
+    } catch {
+      console.warn(`[true-site-size] could not fetch base ref "${ref}"`);
+      base.error = `could not fetch ref "${ref}" - does it exist on origin?`;
+      base.results = null;
+      return base;
+    }
+    try {
+      base.describe = execSync("git describe --tags FETCH_HEAD", {
+        cwd: workspace
+      }).toString().trim();
+    } catch {
+    }
+    base.url = serverUrl && repo ? `${serverUrl}/${repo}/commit/${base.sha}` : null;
+    const cacheFile = cacheDir ? join3(cacheDir, `base-${base.sha}-${configHash}.json`) : null;
     if (cacheFile && existsSync3(cacheFile)) {
-      base = JSON.parse(readFileSync2(cacheFile, "utf8"));
+      base.results = JSON.parse(readFileSync2(cacheFile, "utf8"));
       console.log(
-        `[true-site-size] base (${compareRef} @ ${baseSha.slice(0, 9)}) loaded from cache - skipping its build and measurement`
+        `[true-site-size] base (${ref} @ ${base.sha.slice(0, 9)}) loaded from cache - skipping its build and measurement`
       );
-      logBreakdown("base (cached)", base);
-    } else {
-      console.log(`[true-site-size] measuring base (${compareRef})...`);
-      if (config.cleanCommand) run(config.cleanCommand, workspace);
-      const baseDir = join3(workspace, ".true-site-size-base");
-      rmSync2(baseDir, { recursive: true, force: true });
+      logBreakdown(`base ${ref} (cached)`, base.results);
+      return base;
+    }
+    console.log(`[true-site-size] measuring base (${ref})...`);
+    cleanOnce();
+    const baseDir = join3(workspace, ".true-site-size-base");
+    rmSync2(baseDir, { recursive: true, force: true });
+    try {
       run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
+      base.results = await buildAndMeasure(baseDir, config);
+      logBreakdown(`base ${ref}`, base.results);
+      if (cacheFile && base.results.every((r) => !r.error)) {
+        mkdirSync(cacheDir, { recursive: true });
+        writeFileSync(cacheFile, JSON.stringify(base.results));
+        console.log("[true-site-size] base result cached for future runs");
+      }
+    } catch (e) {
+      console.warn(
+        `[true-site-size] base ${ref} could not be measured (its column will say so): ${e.message}`
+      );
+      base.error = e.message;
+      base.results = null;
+    } finally {
       try {
-        base = await buildAndMeasure(baseDir, config);
-        logBreakdown("base", base);
-        if (cacheFile && base.every((r) => !r.error)) {
-          mkdirSync(cacheDir, { recursive: true });
-          writeFileSync(cacheFile, JSON.stringify(base));
-          console.log("[true-site-size] base result cached for future runs");
-        }
-      } catch (e) {
-        console.warn(
-          `[true-site-size] base measurement failed (reporting head only): ${e.message}`
-        );
-      } finally {
         run(`git worktree remove --force ${baseDir}`, workspace);
+      } catch {
       }
     }
+    return base;
+  };
+  const bases = [];
+  for (const ref of compareRefs) {
+    bases.push(await measureBaseRef(ref));
   }
   const runUrl = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : void 0;
-  const body = formatComment(head, base, {
-    baseLabel,
+  const body = formatComment(head, bases, {
     runUrl,
     commentKey: config.commentKey,
     stripHash: config.stripHash,

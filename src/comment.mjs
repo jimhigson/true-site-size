@@ -22,15 +22,24 @@ const formatDelta = (
   return `${arrow} ${sign}${formatBytes(Math.abs(d))} (${sign}${pct.toFixed(1)}%)`;
 };
 
+/**
+ * column header for one base ref: the ref linked to the exact commit measured,
+ * annotated with `git describe` when it names something other than the ref
+ * itself (eg a branch shown as the release it descends from)
+ */
+const baseHeader = (b) => {
+  const name = b.url ? `[${b.ref}](${b.url})` : `\`${b.ref}\``;
+  const desc = b.describe && b.describe !== b.ref ? ` · ${b.describe}` : "";
+  return `vs ${name}${desc}`;
+};
+
 /** build the markdown body for the PR comment */
 export const formatComment = (
   /** per-scenario head results */
   head,
-  /** per-scenario base results, or null when no base was measurable */
-  base,
-  /** { baseLabel } */
+  /** array of base refs: { ref, sha, describe, url, results, error } */
+  bases,
   {
-    baseLabel,
     runUrl,
     commentKey,
     stripHash,
@@ -55,11 +64,22 @@ export const formatComment = (
     return m;
   };
 
-  /** collapsed per-file breakdown vs base, compressed-size-action style */
+  /** the base's row matching a head row by name (undefined if absent) */
+  const baseRowFor = (b, name) => b.results?.find((r) => r.name === name);
+
+  /** compact delta for the summary table: arrow + signed bytes, no percentage */
+  const deltaShort = (h, base) => {
+    const d = h - base;
+    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "✅";
+    return `${d > 0 ? "🔺 +" : "🟢 -"}${formatBytes(Math.abs(d))}`;
+  };
+
+  /** collapsed per-file breakdown of one head row vs one base ref */
   const detailsFor = (h, b) => {
-    if (h.error || !b || b.error) return "";
+    const br = baseRowFor(b, h.name);
+    if (h.error || !br || br.error) return "";
     const headFiles = filesOf(h.requestLog);
-    const baseFiles = filesOf(b.requestLog);
+    const baseFiles = filesOf(br.requestLog);
     const all = [...new Set([...headFiles.keys(), ...baseFiles.keys()])];
     const changed = all
       .map((f) => {
@@ -73,7 +93,7 @@ export const formatComment = (
       .sort((a, z) => Math.abs(z.delta) - Math.abs(a.delta));
     const unchangedCount = all.length - changed.length;
     if (changed.length === 0) {
-      return `\n<details><summary>${h.name}: no per-file changes (${unchangedCount} files identical)</summary></details>`;
+      return `\n<details><summary>${h.name} vs ${b.ref}: no per-file changes (${unchangedCount} files identical)</summary></details>`;
     }
     const fileRows = changed.map(({ f, hb, bb }) => {
       const deltaCell =
@@ -86,42 +106,60 @@ export const formatComment = (
         : "";
       return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaCell} |`;
     });
-    return `\n<details><summary>${h.name}: ${changed.length} file(s) changed, ${unchangedCount} identical</summary>\n\n| file | PR | base | delta |\n| --- | --- | --- | --- |\n${fileRows.join("\n")}\n</details>`;
+    return `\n<details><summary>${h.name} vs ${b.ref}: ${changed.length} file(s) changed, ${unchangedCount} identical</summary>\n\n| file | PR | ${b.ref} | delta |\n| --- | --- | --- | --- |\n${fileRows.join("\n")}\n</details>`;
   };
+
+  // table: row label, the PR value, then one delta column per base ref. Each
+  // base cell shows the delta with that base's own value in parentheses.
+  const headerCells = ["", "PR", ...bases.map(baseHeader)];
+  const sepCells = headerCells.map(() => "---");
+
   const rows = head.map((h) => {
-    const b = base?.find((r) => r.name === h.name);
-    if (h.error) {
-      return `| ${h.name} | ⚠️ unable to measure - ${h.error} | | |`;
-    }
-    const baseCell =
-      b == null ? "—"
-      : b.error ? `⚠️ unable to measure - ${b.error}`
-      : `${formatBytes(b.bytes)} ${formatDuration(b.timeToMarkMs)}`;
-    const deltaCell = formatDelta(
-      h.bytes,
-      b?.error ? null : b?.bytes,
-      minimumChangeThreshold,
-    );
-    return `| ${h.name} | ${formatBytes(h.bytes)} ${formatDuration(h.timeToMarkMs)} | ${baseCell} | ${deltaCell} |`;
+    const prCell =
+      h.error ?
+        `⚠️ unable to measure - ${h.error}`
+      : `${formatBytes(h.bytes)} ${formatDuration(h.timeToMarkMs)}`;
+    const baseCells = bases.map((b) => {
+      if (h.error) return "—";
+      const br = baseRowFor(b, h.name);
+      if (!br || br.error) return "—";
+      return `${deltaShort(h.bytes, br.bytes)} (${formatBytes(br.bytes)})`;
+    });
+    return `| ${[h.name, prCell, ...baseCells].join(" | ")} |`;
   });
 
-  const totalHead = head.every((h) => !h.error)
-    ? head.reduce((a, h) => a + h.bytes, 0)
+  const totalHead =
+    head.every((h) => !h.error) ?
+      head.reduce((a, h) => a + h.bytes, 0)
     : null;
-  const totalBase =
-    base && base.every((b) => !b.error)
-      ? base.reduce((a, b) => a + b.bytes, 0)
-      : null;
   const totalRow =
-    totalHead != null
-      ? `| **total** | **${formatBytes(totalHead)}** | ${totalBase != null ? `**${formatBytes(totalBase)}**` : "—"} | ${formatDelta(totalHead, totalBase, minimumChangeThreshold)} |`
-      : "";
+    totalHead != null ?
+      `| ${[
+        "**total**",
+        `**${formatBytes(totalHead)}**`,
+        ...bases.map((b) => {
+          const ok = b.results && b.results.every((r) => !r.error);
+          if (!ok) return "—";
+          const totalBase = b.results.reduce((a, r) => a + r.bytes, 0);
+          return deltaShort(totalHead, totalBase);
+        }),
+      ].join(" | ")} |`
+    : "";
 
   const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);
   const ignoredNote =
     totalIgnored > 0 ?
       `\n<sub>${formatBytes(totalIgnored)} matched ignore-url-patterns and is not counted</sub>`
     : "";
+
+  // bases that could not be measured: noted once rather than in every cell
+  const baseErrorNotes = bases
+    .filter((b) => !b.results)
+    .map(
+      (b) =>
+        `\n> ⚠️ base \`${b.ref}\` could not be measured${b.error ? ` - ${b.error}` : ""}`,
+    )
+    .join("");
 
   // a url transferred in full more than once in a single row is a standing
   // bug in the measured app (eg the same asset fetched with mismatched
@@ -152,17 +190,27 @@ export const formatComment = (
       `\n<sub>runs varied by up to ${formatBytes(maxSpread)} (h2 header-compression noise, within the ${formatBytes(spreadToleranceBytes)} tolerance) - the minimum is reported</sub>`
     : "";
 
+  const comparedNote =
+    bases.length === 0 ?
+      "\n<sub>no base ref to compare against - showing head only</sub>"
+    : "";
+
+  // one per-file breakdown per (base ref, row); errored bases/rows yield none
+  const detailsBlocks = bases
+    .flatMap((b) => head.map((h) => detailsFor(h, b)))
+    .join("");
+
   return `${markerFor(commentKey)}
 ### 📡 real network cost to ready${commentKey ? ` (${commentKey})` : ""}
 
-True wire bytes from cold cache to \`performance.mark\`, network settled. Base is ${baseLabel}.
+True wire bytes from cold cache to \`performance.mark\`, network settled.
 
-| | PR | base | delta |
-| --- | --- | --- | --- |
+| ${headerCells.join(" | ")} |
+| ${sepCells.join(" | ")} |
 ${rows.join("\n")}
 ${totalRow}
-${spreadNote}${ignoredNote}${duplicateNotes}
-${head.map((h) => detailsFor(h, base?.find((r) => r.name === h.name))).join("")}
+${spreadNote}${ignoredNote}${baseErrorNotes}${duplicateNotes}${comparedNote}
+${detailsBlocks}
 ${runUrl ? `\n<sub>📋 per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
 <sub>measured by [true-site-size](https://github.com/jimhigson/true-site-size)</sub>
 `;

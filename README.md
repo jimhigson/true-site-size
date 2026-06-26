@@ -40,6 +40,40 @@ It catches:
 It builds and measures both the PR head and the base ref, then posts (and
 updates in place) a comment with the change.
 
+## Comparing against several refs
+
+`base-refs` is a JSON array — give it more than one ref and each becomes its
+own column, so you can see a PR against, say, both `main` and your last
+release at once:
+
+```yaml
+- uses: jimhigson/true-site-size@main
+  with:
+    install-command: pnpm install
+    clean-command: pnpm clean
+    base-refs: |
+      ["main", "v1.4.0"]
+    scenarios: |
+      [{ "name": "app", "url": "/", "mark": "app-ready" }]
+```
+
+Each column header links to the exact commit measured and is annotated with
+`git describe` — so `main` shows up as the release it descends from, eg
+`v1.4.0-4-gabc1234`. To compare against the *latest* release tag without
+hardcoding it, resolve it in a prior step:
+
+```yaml
+- id: lasttag
+  run: echo "ref=$(git describe --tags --abbrev=0)" >> "$GITHUB_OUTPUT"
+- uses: jimhigson/true-site-size@main
+  with:
+    base-refs: '["main", "${{ steps.lasttag.outputs.ref }}"]'
+    scenarios: '[{ "name": "app", "url": "/", "mark": "app-ready" }]'
+```
+
+Omitting `base-refs` falls back to the PR's base branch (a single column), so
+existing single-ref setups need nothing.
+
 ## Journeys: measuring interaction, not just navigation
 
 The `journey` input is the full step language; `scenarios` above is sugar for
@@ -74,14 +108,15 @@ for anything exotic.
 
 ## What the comment shows
 
-- a row per journey segment: wire bytes and time to mark, versus the base
-  ref (with its own timing), and a total. Deltas smaller than
-  `minimum-change-threshold` bytes show as unchanged
-- a collapsed **per-file breakdown** when the base is measurable: files whose
-  transfer changed, matched across builds with content hashes stripped
-  (`strip-hash`), new (🆕) and no-longer-loaded (🗑️) files flagged, identical
-  files counted but hidden — "where did the bytes come from?" without leaving
-  the PR
+- a row per journey segment: wire bytes and time to mark for the PR, then a
+  delta column per base ref (the base's own bytes in parentheses), and a
+  total. Each base column header links to the exact commit measured and is
+  annotated with `git describe` (eg a branch shown as the release it descends
+  from). Deltas smaller than `minimum-change-threshold` bytes show as unchanged
+- a collapsed **per-file breakdown** per base ref: files whose transfer
+  changed, matched across builds with content hashes stripped (`strip-hash`),
+  new (🆕) and no-longer-loaded (🗑️) files flagged, identical files counted but
+  hidden — "where did the bytes come from?" without leaving the PR
 - 🔁 callouts for any url downloaded in full more than once in a segment — a
   standing duplicate-fetch bug in the app
 - rows that could not be measured say why, explicitly: `unable to measure -
@@ -185,7 +220,7 @@ Only fully-successful base measurements are cached.
 | `step-timeout-ms` | `20000` | per-step cap, eg a click target appearing |
 | `settle-timeout-ms` | `30000` | cap on settling; errors with in-flight urls named |
 | `timeout-ms` | `900000` | whole-action watchdog |
-| `base-ref` | PR base | override comparison ref, eg release PRs vs the previous release: `${{ startsWith(github.head_ref, 'release-please--') && 'production' \|\| '' }}` |
+| `base-refs` | PR base | JSON array of refs to compare against, each its own column (linked + `git describe`'d), eg `["main", "v1.4.0"]`; empty uses the PR base branch |
 | `strip-hash` | vite-style | regex stripped from filenames for per-file matching; `""` disables |
 | `comment` | `true` | post/update the PR comment |
 | `comment-key` | `""` | maintain separate comments per key |
