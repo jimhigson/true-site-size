@@ -160,8 +160,10 @@ export const formatComment = (
     head.every((h) => !h.error) ?
       head.reduce((a, h) => a + h.bytes, 0)
     : null;
+  // a total only adds information when there are several rows to sum; with a
+  // single row it just repeats it
   const totalRow =
-    totalHead != null ?
+    totalHead != null && head.length > 1 ?
       `| ${[
         "**total**",
         `**${formatBytes(totalHead)}**`,

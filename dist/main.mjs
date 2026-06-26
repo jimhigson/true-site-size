@@ -31722,7 +31722,7 @@ ${entries.join("\n\n")}
     return `| ${[h.name, prCell, ...baseCells].join(" | ")} |`;
   });
   const totalHead = head.every((h) => !h.error) ? head.reduce((a, h) => a + h.bytes, 0) : null;
-  const totalRow = totalHead != null ? `| ${[
+  const totalRow = totalHead != null && head.length > 1 ? `| ${[
     "**total**",
     `**${formatBytes(totalHead)}**`,
     ...bases.map((b) => {

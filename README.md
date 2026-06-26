@@ -110,7 +110,8 @@ for anything exotic.
 
 - a row per journey segment: wire bytes for the PR, then a column per base
   ref showing the delta (📈 bigger, 📉 smaller, 🟰 unchanged) and the base's
-  own bytes, and a total in the same shape. Each base column header links to
+  own bytes, and (when there's more than one row) a total in the same shape.
+  Each base column header links to
   the exact commit measured and is
   annotated with `git describe` (eg a branch shown as the release it descends
   from). Deltas smaller than `minimum-change-threshold` bytes show as unchanged
