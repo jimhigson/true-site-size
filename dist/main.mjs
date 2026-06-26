@@ -31624,7 +31624,7 @@ var formatDelta = (head, base, minimumChangeThreshold) => {
   const d = head - base;
   if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "\u{1F7F0}";
   const pct = base === 0 ? 0 : Math.abs(d / base * 100);
-  const arrow = d > 0 ? "\u{1F53A}" : "\u{1F7E2}";
+  const arrow = d > 0 ? "\u{1F4C8}" : "\u{1F4C9}";
   const sign = d > 0 ? "+" : "-";
   return `${arrow} ${sign}${formatBytes(Math.abs(d))} (${sign}${pct.toFixed(1)}%)`;
 };
@@ -31658,7 +31658,7 @@ var formatComment = (head, bases, {
   const deltaShort = (h, base) => {
     const d = h - base;
     if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "\u{1F7F0}";
-    return `${d > 0 ? "\u{1F53A} +" : "\u{1F7E2} -"}${formatBytes(Math.abs(d))}`;
+    return `${d > 0 ? "\u{1F4C8} +" : "\u{1F4C9} -"}${formatBytes(Math.abs(d))}`;
   };
   const detailsFor = (h, b) => {
     const br = baseRowFor(b, h.name);
@@ -31679,7 +31679,7 @@ var formatComment = (head, bases, {
 <details><summary>${h.name} vs ${b.ref}: no per-file changes (${unchangedCount} files identical)</summary></details>`;
     }
     const fileRows = changed.map(({ f, hb, bb }) => {
-      const deltaCell = bb === void 0 ? `\u{1F53A} +${formatBytes(hb)}` : hb === void 0 ? `\u{1F7E2} -${formatBytes(bb)}` : formatDelta(hb, bb, minimumChangeThreshold);
+      const deltaCell = bb === void 0 ? `\u{1F4C8} +${formatBytes(hb)}` : hb === void 0 ? `\u{1F4C9} -${formatBytes(bb)}` : formatDelta(hb, bb, minimumChangeThreshold);
       const note = bb === void 0 ? " \u{1F195}" : hb === void 0 ? " \u{1F5D1}\uFE0F" : "";
       return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaCell} |`;
     });
@@ -31699,7 +31699,7 @@ ${fileRows.join("\n")}
       if (h.error) return "\u2014";
       const br = baseRowFor(b, h.name);
       if (!br || br.error) return "\u2014";
-      return `${deltaShort(h.bytes, br.bytes)} (${formatBytes(br.bytes)})`;
+      return `${deltaShort(h.bytes, br.bytes)} \u2192 ${formatBytes(br.bytes)}`;
     });
     return `| ${[h.name, prCell, ...baseCells].join(" | ")} |`;
   });
@@ -31711,7 +31711,7 @@ ${fileRows.join("\n")}
       const ok = b.results && b.results.every((r) => !r.error);
       if (!ok) return "\u2014";
       const totalBase = b.results.reduce((a, r) => a + r.bytes, 0);
-      return deltaShort(totalHead, totalBase);
+      return `${deltaShort(totalHead, totalBase)} \u2192 ${formatBytes(totalBase)}`;
     })
   ].join(" | ")} |` : "";
   const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);

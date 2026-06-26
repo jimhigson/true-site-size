@@ -17,7 +17,7 @@ const formatDelta = (
   const d = head - base;
   if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "🟰";
   const pct = base === 0 ? 0 : Math.abs((d / base) * 100);
-  const arrow = d > 0 ? "🔺" : "🟢";
+  const arrow = d > 0 ? "📈" : "📉";
   const sign = d > 0 ? "+" : "-";
   return `${arrow} ${sign}${formatBytes(Math.abs(d))} (${sign}${pct.toFixed(1)}%)`;
 };
@@ -71,7 +71,7 @@ export const formatComment = (
   const deltaShort = (h, base) => {
     const d = h - base;
     if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "🟰";
-    return `${d > 0 ? "🔺 +" : "🟢 -"}${formatBytes(Math.abs(d))}`;
+    return `${d > 0 ? "📈 +" : "📉 -"}${formatBytes(Math.abs(d))}`;
   };
 
   /** collapsed per-file breakdown of one head row vs one base ref */
@@ -97,8 +97,8 @@ export const formatComment = (
     }
     const fileRows = changed.map(({ f, hb, bb }) => {
       const deltaCell =
-        bb === undefined ? `🔺 +${formatBytes(hb)}`
-        : hb === undefined ? `🟢 -${formatBytes(bb)}`
+        bb === undefined ? `📈 +${formatBytes(hb)}`
+        : hb === undefined ? `📉 -${formatBytes(bb)}`
         : formatDelta(hb, bb, minimumChangeThreshold);
       const note =
         bb === undefined ? " 🆕"
@@ -121,7 +121,7 @@ export const formatComment = (
       if (h.error) return "—";
       const br = baseRowFor(b, h.name);
       if (!br || br.error) return "—";
-      return `${deltaShort(h.bytes, br.bytes)} (${formatBytes(br.bytes)})`;
+      return `${deltaShort(h.bytes, br.bytes)} → ${formatBytes(br.bytes)}`;
     });
     return `| ${[h.name, prCell, ...baseCells].join(" | ")} |`;
   });
@@ -139,7 +139,7 @@ export const formatComment = (
           const ok = b.results && b.results.every((r) => !r.error);
           if (!ok) return "—";
           const totalBase = b.results.reduce((a, r) => a + r.bytes, 0);
-          return deltaShort(totalHead, totalBase);
+          return `${deltaShort(totalHead, totalBase)} → ${formatBytes(totalBase)}`;
         }),
       ].join(" | ")} |`
     : "";
