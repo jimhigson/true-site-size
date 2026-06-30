@@ -109,8 +109,9 @@ for anything exotic.
 ## What the comment shows
 
 - a row per journey segment: wire bytes for the PR, then a column per base
-  ref showing the delta (📈 bigger, 📉 smaller, 🟰 unchanged) and the base's
-  own bytes, and (when there's more than one row) a total in the same shape.
+  ref showing the delta (📈 bigger, 📉 smaller, 🟰 unchanged), the relative %,
+  and the base's own bytes — stacked on their own lines — and (when there's
+  more than one row) a total in the same shape.
   Each base column header links to
   the exact commit measured and is
   annotated with `git describe` (eg a branch shown as the release it descends

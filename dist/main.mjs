@@ -31658,10 +31658,14 @@ var formatComment = (head, bases, {
     return m;
   };
   const baseRowFor = (b, name) => b.results?.find((r) => r.name === name);
-  const deltaShort = (h, base) => {
+  const deltaCell = (h, base) => {
+    const from = `from ${formatBytes(base)}`;
     const d = h - base;
-    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "\u{1F7F0}";
-    return `${d > 0 ? "\u{1F4C8} +" : "\u{1F4C9} -"}${formatBytes(Math.abs(d))}`;
+    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return `\u{1F7F0}<br>${from}`;
+    const pct = base === 0 ? 0 : Math.abs(d / base * 100);
+    const sign = d > 0 ? "+" : "-";
+    const emoji = d > 0 ? "\u{1F4C8}" : "\u{1F4C9}";
+    return `${emoji} ${sign}${formatBytes(Math.abs(d))}<br>${sign}${pct.toFixed(1)}%<br>${from}`;
   };
   const diffMaps = (headFiles, baseFiles) => {
     const all = [.../* @__PURE__ */ new Set([...headFiles.keys(), ...baseFiles.keys()])];
@@ -31685,9 +31689,9 @@ var formatComment = (head, bases, {
   };
   const fileTable = (b, changed) => {
     const fileRows = changed.map(({ f, hb, bb }) => {
-      const deltaCell = bb === void 0 ? `\u{1F4C8} +${formatBytes(hb)}` : hb === void 0 ? `\u{1F4C9} -${formatBytes(bb)}` : formatDelta(hb, bb, minimumChangeThreshold);
+      const deltaCell2 = bb === void 0 ? `\u{1F4C8} +${formatBytes(hb)}` : hb === void 0 ? `\u{1F4C9} -${formatBytes(bb)}` : formatDelta(hb, bb, minimumChangeThreshold);
       const note = bb === void 0 ? " \u{1F195}" : hb === void 0 ? " \u{1F5D1}\uFE0F" : "";
-      return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaCell} |`;
+      return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaCell2} |`;
     });
     return `| file | PR | ${b.ref} | delta |
 | --- | --- | --- | --- |
@@ -31699,9 +31703,9 @@ ${fileRows.join("\n")}`;
       const diff = fileDiff(h, b);
       if (!diff) return null;
       if (diff.changed.length === 0) {
-        return `**${h.name}**: no per-file changes (${diff.unchangedCount} files identical)`;
+        return `${h.name}: no per-file changes (${diff.unchangedCount} files identical)`;
       }
-      const summary = `**${h.name}**: ${diff.changed.length} file(s) changed, ${diff.unchangedCount} identical`;
+      const summary = `${h.name}: ${diff.changed.length} file(s) changed, ${diff.unchangedCount} identical`;
       const table = fileTable(b, diff.changed);
       return collapsibleBreakdown ? `<details><summary>${summary}</summary>
 
@@ -31724,7 +31728,7 @@ ${entries.join("\n\n")}
       if (h.error) return "\u2014";
       const br = baseRowFor(b, h.name);
       if (!br || br.error) return "\u2014";
-      return `${deltaShort(h.bytes, br.bytes)} from ${formatBytes(br.bytes)}`;
+      return deltaCell(h.bytes, br.bytes);
     });
     return `| ${[h.name, prCell, ...baseCells].join(" | ")} |`;
   });
@@ -31736,7 +31740,7 @@ ${entries.join("\n\n")}
       const ok = b.results && b.results.every((r) => !r.error);
       if (!ok) return "\u2014";
       const totalBase = b.results.reduce((a, r) => a + r.bytes, 0);
-      return `${deltaShort(totalHead, totalBase)} from ${formatBytes(totalBase)}`;
+      return deltaCell(totalHead, totalBase);
     })
   ].join(" | ")} |` : "";
   const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);
@@ -31802,7 +31806,7 @@ ${table}
     "**on disk**",
     `**${formatBytes(headDisk.total)}**`,
     ...bases.map(
-      (b) => b.disk ? `${formatDelta(headDisk.total, b.disk.total, minimumChangeThreshold)} from ${formatBytes(b.disk.total)}` : "\u2014"
+      (b) => b.disk ? deltaCell(headDisk.total, b.disk.total) : "\u2014"
     )
   ].join(" | ")} |` : "";
   const diskSection = measureDisk && headDisk ? `

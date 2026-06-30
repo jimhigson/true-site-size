@@ -70,11 +70,20 @@ export const formatComment = (
   /** the base's row matching a head row by name (undefined if absent) */
   const baseRowFor = (b, name) => b.results?.find((r) => r.name === name);
 
-  /** compact delta for the summary table: arrow + signed bytes, no percentage */
-  const deltaShort = (h, base) => {
+  /**
+   * a summary-table cell, stacked so each part reads on its own line: the
+   * delta, the relative %, then the base ("from") value. Markdown table cells
+   * take <br> for line breaks (a literal newline would break the row), so the
+   * lines are joined with <br>. Unchanged cells drop the % line (no change).
+   */
+  const deltaCell = (h, base) => {
+    const from = `from ${formatBytes(base)}`;
     const d = h - base;
-    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "🟰";
-    return `${d > 0 ? "📈 +" : "📉 -"}${formatBytes(Math.abs(d))}`;
+    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return `🟰<br>${from}`;
+    const pct = base === 0 ? 0 : Math.abs((d / base) * 100);
+    const sign = d > 0 ? "+" : "-";
+    const emoji = d > 0 ? "📈" : "📉";
+    return `${emoji} ${sign}${formatBytes(Math.abs(d))}<br>${sign}${pct.toFixed(1)}%<br>${from}`;
   };
 
   /**
@@ -137,9 +146,9 @@ export const formatComment = (
         const diff = fileDiff(h, b);
         if (!diff) return null;
         if (diff.changed.length === 0) {
-          return `**${h.name}**: no per-file changes (${diff.unchangedCount} files identical)`;
+          return `${h.name}: no per-file changes (${diff.unchangedCount} files identical)`;
         }
-        const summary = `**${h.name}**: ${diff.changed.length} file(s) changed, ${diff.unchangedCount} identical`;
+        const summary = `${h.name}: ${diff.changed.length} file(s) changed, ${diff.unchangedCount} identical`;
         const table = fileTable(b, diff.changed);
         return collapsibleBreakdown ?
             `<details><summary>${summary}</summary>\n\n${table}\n</details>`
@@ -163,7 +172,7 @@ export const formatComment = (
       if (h.error) return "—";
       const br = baseRowFor(b, h.name);
       if (!br || br.error) return "—";
-      return `${deltaShort(h.bytes, br.bytes)} from ${formatBytes(br.bytes)}`;
+      return deltaCell(h.bytes, br.bytes);
     });
     return `| ${[h.name, prCell, ...baseCells].join(" | ")} |`;
   });
@@ -183,7 +192,7 @@ export const formatComment = (
           const ok = b.results && b.results.every((r) => !r.error);
           if (!ok) return "—";
           const totalBase = b.results.reduce((a, r) => a + r.bytes, 0);
-          return `${deltaShort(totalHead, totalBase)} from ${formatBytes(totalBase)}`;
+          return deltaCell(totalHead, totalBase);
         }),
       ].join(" | ")} |`
     : "";
@@ -275,9 +284,7 @@ export const formatComment = (
         "**on disk**",
         `**${formatBytes(headDisk.total)}**`,
         ...bases.map((b) =>
-          b.disk ?
-            `${formatDelta(headDisk.total, b.disk.total, minimumChangeThreshold)} from ${formatBytes(b.disk.total)}`
-          : "—",
+          b.disk ? deltaCell(headDisk.total, b.disk.total) : "—",
         ),
       ].join(" | ")} |`
     : "";
