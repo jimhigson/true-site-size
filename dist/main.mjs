@@ -32182,6 +32182,16 @@ var runJourney = async (steps, {
     await Network.setBypassServiceWorker({ bypass: true });
     await Page.enable();
     await Runtime.enable();
+    if (process.env["TRUE_SITE_SIZE_BROWSER_CONSOLE"]) {
+      const fmtArg = (a) => a.value !== void 0 ? String(a.value) : a.description ?? a.type ?? "";
+      Runtime.on(
+        "consoleAPICalled",
+        ({ type, args }) => process.stderr.write(
+          `[browser:${type}] ${args.map(fmtArg).join(" ")}
+`
+        )
+      );
+    }
     await Target.setAutoAttach({
       autoAttach: true,
       waitForDebuggerOnStart: true,

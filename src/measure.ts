@@ -161,6 +161,21 @@ export const runJourney = async (
     await Network.setBypassServiceWorker({ bypass: true });
     await Page.enable();
     await Runtime.enable();
+    // optionally forward the page's console into the action log, to debug a
+    // journey from the app's own side. off unless TRUE_SITE_SIZE_BROWSER_CONSOLE
+    // is set, since pages can be chatty.
+    if (process.env["TRUE_SITE_SIZE_BROWSER_CONSOLE"]) {
+      type ConsoleArg = { value?: unknown; description?: string; type?: string };
+      const fmtArg = (a: ConsoleArg) =>
+        a.value !== undefined ? String(a.value) : (a.description ?? a.type ?? "");
+      Runtime.on(
+        "consoleAPICalled",
+        ({ type, args }: { type: string; args: ConsoleArg[] }) =>
+          process.stderr.write(
+            `[browser:${type}] ${args.map(fmtArg).join(" ")}\n`,
+          ),
+      );
+    }
     // workers are separate cdp targets: without attaching, a worker script's
     // loadingFinished never reaches the page session (the request looks
     // in-flight forever) and bytes the worker fetches go uncounted. Attach
