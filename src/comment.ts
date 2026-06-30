@@ -1,10 +1,19 @@
-import { formatBytes } from "./formatBytes.mjs";
+import { formatBytes } from "./formatBytes.ts";
+
+import type {
+  BaseRef,
+  CommentOptions,
+  DiskSizes,
+  PostCommentOptions,
+  RequestLogEntry,
+  RowResult,
+} from "./types.ts";
 
 /**
  * each comment-key maintains its own comment on the pr, so one workflow can
  * report several measurements (eg a game and an editor build)
  */
-const markerFor = (commentKey) =>
+const markerFor = (commentKey: string) =>
   `<!-- true-site-size${commentKey ? `:${commentKey}` : ""} -->`;
 
 /**
@@ -12,7 +21,7 @@ const markerFor = (commentKey) =>
  * annotated with `git describe` when it names something other than the ref
  * itself (eg a branch shown as the release it descends from)
  */
-const baseHeader = (b) => {
+const baseHeader = (b: BaseRef) => {
   const name = b.url ? `[${b.ref}](${b.url})` : `\`${b.ref}\``;
   const desc = b.describe && b.describe !== b.ref ? ` · ${b.describe}` : "";
   return `vs ${name}${desc}`;
@@ -24,14 +33,14 @@ const baseHeader = (b) => {
  * Assigned by row order; cycles once the palette is exhausted.
  */
 const markColours = ["🟣", "🟠", "🔵", "🟡", "🟢", "🔴", "🟤", "⚫", "⚪"];
-const markColour = (i) => markColours[i % markColours.length];
+const markColour = (i: number) => markColours[i % markColours.length]!;
 
 /** build the markdown body for the PR comment */
 export const formatComment = (
   /** per-scenario head results */
-  head,
+  head: RowResult[],
   /** array of base refs: { ref, sha, describe, url, results, error } */
-  bases,
+  bases: BaseRef[],
   {
     runUrl,
     commentKey,
@@ -41,17 +50,17 @@ export const formatComment = (
     collapsibleBreakdown = true,
     headDisk = null,
     measureDisk = true,
-  },
+  }: CommentOptions,
 ) => {
   const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
   /** filename for matching across refs: pathname with the content hash removed */
-  const fileOf = (url) => {
+  const fileOf = (url: string) => {
     const path = url.startsWith("blob:") ? "(blob)" : new URL(url).pathname;
     return stripRe ? path.replace(stripRe, ".") : path;
   };
   /** sum request bytes per hash-stripped file, skipping ignored requests */
-  const filesOf = (requestLog) => {
-    const m = new Map();
+  const filesOf = (requestLog: RequestLogEntry[] | undefined) => {
+    const m = new Map<string, number>();
     for (const { url, bytes, ignored } of requestLog ?? []) {
       if (ignored) continue;
       const f = fileOf(url);
@@ -61,7 +70,8 @@ export const formatComment = (
   };
 
   /** the base's row matching a head row by name (undefined if absent) */
-  const baseRowFor = (b, name) => b.results?.find((r) => r.name === name);
+  const baseRowFor = (b: BaseRef, name: string) =>
+    b.results?.find((r) => r.name === name);
 
   /**
    * severity emoji for a size change, graded by the % - copied verbatim from
@@ -69,7 +79,7 @@ export const formatComment = (
    * (🔍 ⚠️ 🚨 🆘), decreases celebrate (✅ 👏 🎉 🏆), and a change within ±5%
    * gets none.
    */
-  const severityIcon = (delta, base) => {
+  const severityIcon = (delta: number, base: number) => {
     if (base === 0) return "🆕";
     const pct = Math.round((delta / base) * 100);
     if (pct >= 50) return "🆘";
@@ -90,7 +100,7 @@ export const formatComment = (
    * for line breaks (a literal newline would break the row). Unchanged cells
    * drop the % line.
    */
-  const deltaCell = (h, base) => {
+  const deltaCell = (h: number, base: number) => {
     const was = `was ${formatBytes(base)}`;
     const d = h - base;
     if (d === 0 || Math.abs(d) < minimumChangeThreshold) return `🟰<br>${was}`;
@@ -104,7 +114,7 @@ export const formatComment = (
 
   /** inline delta text for the per-file tables: severity icon + signed bytes
    *  + relative %, matching the summary cells' emoji scheme */
-  const severityDelta = (h, base) => {
+  const severityDelta = (h: number, base: number) => {
     const d = h - base;
     const icon = severityIcon(d, base);
     const sign = d > 0 ? "+" : "-";
@@ -116,7 +126,10 @@ export const formatComment = (
    * diff two file→bytes maps: { changed: the files whose bytes moved by at
    * least the threshold, biggest first; fileCount: size of their union }
    */
-  const diffMaps = (headFiles, baseFiles) => {
+  const diffMaps = (
+    headFiles: Map<string, number>,
+    baseFiles: Map<string, number>,
+  ) => {
     const all = [...new Set([...headFiles.keys(), ...baseFiles.keys()])];
     const changed = all
       .map((f) => {
@@ -133,7 +146,7 @@ export const formatComment = (
 
   /** per-file diff of a head row vs a base ref: { changed, unchangedCount },
    *  or null when the row or base could not be measured */
-  const fileDiff = (h, b) => {
+  const fileDiff = (h: RowResult, b: BaseRef) => {
     const br = baseRowFor(b, h.name);
     if (h.error || !br || br.error) return null;
     const { changed, fileCount } = diffMaps(
@@ -144,7 +157,10 @@ export const formatComment = (
   };
 
   /** the markdown table of a row's changed files vs a base ref */
-  const fileTable = (b, changed) => {
+  const fileTable = (
+    b: BaseRef,
+    changed: { f: string; hb: number | undefined; bb: number | undefined }[],
+  ) => {
     const fileRows = changed.map(({ f, hb, bb }) => {
       const deltaTxt =
         bb === undefined ? `+${formatBytes(hb)}`
@@ -165,7 +181,7 @@ export const formatComment = (
    * a collapsible <details> by default, or shown inline when
    * collapsibleBreakdown is false. Empty when the base could not be measured.
    */
-  const breakdownFor = (b) => {
+  const breakdownFor = (b: BaseRef) => {
     if (!b.results) return "";
     const entries = head
       .map((h, i) => {
@@ -199,14 +215,14 @@ export const formatComment = (
       if (h.error) return "—";
       const br = baseRowFor(b, h.name);
       if (!br || br.error) return "—";
-      return deltaCell(h.bytes, br.bytes);
+      return deltaCell(h.bytes!, br.bytes!);
     });
     return `| ${[`${markColour(i)} ${h.name}`, prCell, ...baseCells].join(" | ")} |`;
   });
 
   const totalHead =
     head.every((h) => !h.error) ?
-      head.reduce((a, h) => a + h.bytes, 0)
+      head.reduce((a, h) => a + h.bytes!, 0)
     : null;
   // a total only adds information when there are several rows to sum; with a
   // single row it just repeats it
@@ -218,7 +234,7 @@ export const formatComment = (
         ...bases.map((b) => {
           const ok = b.results && b.results.every((r) => !r.error);
           if (!ok) return "—";
-          const totalBase = b.results.reduce((a, r) => a + r.bytes, 0);
+          const totalBase = b.results!.reduce((a, r) => a + r.bytes!, 0);
           return deltaCell(totalHead, totalBase);
         }),
       ].join(" | ")} |`
@@ -245,7 +261,7 @@ export const formatComment = (
   const duplicateNotes = head
     .filter((h) => !h.error)
     .flatMap((h) => {
-      const transfers = new Map();
+      const transfers = new Map<string, number[]>();
       for (const { url, bytes, ignored } of h.requestLog ?? []) {
         if (ignored || bytes === 0) continue;
         transfers.set(url, [...(transfers.get(url) ?? []), bytes]);
@@ -279,8 +295,8 @@ export const formatComment = (
   // ── total built size on disk: every file in serve-dir, loaded or not,
   // compressed as served. headDisk / base.disk are { total, files } or null.
   /** a disk { files } as a hash-stripped path→bytes map (matches across builds) */
-  const diskFilesOf = (disk) => {
-    const m = new Map();
+  const diskFilesOf = (disk: DiskSizes | null | undefined) => {
+    const m = new Map<string, number>();
     for (const [path, bytes] of Object.entries(disk?.files ?? {})) {
       const f = stripRe ? path.replace(stripRe, ".") : path;
       m.set(f, (m.get(f) ?? 0) + bytes);
@@ -288,7 +304,7 @@ export const formatComment = (
     return m;
   };
   /** changed-files breakdown of the whole serve-dir vs one base ref */
-  const diskBreakdownFor = (b) => {
+  const diskBreakdownFor = (b: BaseRef) => {
     if (!headDisk || !b.disk) return "";
     const { changed, fileCount } = diffMaps(
       diskFilesOf(headDisk),
@@ -346,8 +362,14 @@ ${runUrl ? `\n<sub>📋 per-request breakdown (every url, size and timing) is in
 
 /** create or update the marker-identified comment on the PR */
 export const postComment = async (
-  body,
-  { token, repo, issueNumber, commentKey, apiUrl = "https://api.github.com" },
+  body: string,
+  {
+    token,
+    repo,
+    issueNumber,
+    commentKey,
+    apiUrl = "https://api.github.com",
+  }: PostCommentOptions,
 ) => {
   const marker = markerFor(commentKey);
   const headers = {
@@ -362,7 +384,9 @@ export const postComment = async (
   if (!listRes.ok) {
     throw new Error(`listing comments failed: ${listRes.status} ${await listRes.text()}`);
   }
-  const existing = (await listRes.json()).find((c) => c.body?.includes(marker));
+  const existing = ((await listRes.json()) as { id: number; body?: string }[]).find(
+    (c) => c.body?.includes(marker),
+  );
   const target =
     existing ?
       { url: `${apiUrl}/repos/${repo}/issues/comments/${existing.id}`, method: "PATCH" }

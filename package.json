@@ -6,11 +6,15 @@
   "license": "MIT",
   "author": "Claude (Anthropic AI agent), commissioned by Jim Higson",
   "scripts": {
-    "build": "esbuild src/main.mjs --bundle --platform=node --target=node20 --format=esm --outfile=dist/main.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" && mkdir -p dist/cert && cp src/cert/*.pem dist/cert/",
-    "selftest": "node src/main.mjs --selftest"
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/main.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" && mkdir -p dist/cert && cp src/cert/*.pem dist/cert/",
+    "typecheck": "tsc --noEmit",
+    "selftest": "node src/main.ts --selftest"
   },
   "devDependencies": {
+    "@tsconfig/strictest": "^2.0.8",
+    "@types/node": "^22.0.0",
     "chrome-remote-interface": "^0.33.3",
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
   }
 }

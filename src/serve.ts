@@ -12,6 +12,8 @@ import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 import * as zlib from "node:zlib";
 import { readFileSync, readdirSync } from "node:fs";
 
+import type { CompressionLevel, DiskSizes, ServeHandle } from "./types.ts";
+
 // production sites serve h2, whose compressed headers make per-request
 // overhead far smaller than http/1.1 - measuring over h2 keeps wire bytes
 // honest. Browsers only speak h2 over TLS, so a throwaway self-signed
@@ -35,7 +37,7 @@ export const certSpkiHash = createHash("sha256")
   )
   .digest("base64");
 
-const mimeTypes = {
+const mimeTypes: Record<string, string> = {
   ".html": "text/html",
   ".js": "text/javascript",
   ".mjs": "text/javascript",
@@ -60,7 +62,13 @@ const mimeTypes = {
  * the measured bytes reflect a server compressing on the fly rather than a
  * fully pre-compressed asset. Pass "max" as the level to use the maximum.
  */
-const encodings = {
+interface Encoding {
+  name: string;
+  min: number;
+  max: number;
+  default: number;
+}
+const encodings: Record<string, Encoding> = {
   gzip: { name: "gzip", min: 0, max: 9, default: 8 },
   br: { name: "brotli", min: 0, max: 11, default: 4 },
   zstd: { name: "zstd", min: 1, max: 22, default: 6 },
@@ -71,8 +79,8 @@ const encodings = {
  * resolve a compression-level input - a number, the string "max", or null
  * (use the encoding's default) - to a concrete numeric level.
  */
-const levelFor = (compression, level) => {
-  const enc = encodings[compression];
+const levelFor = (compression: string, level: CompressionLevel) => {
+  const enc = encodings[compression]!;
   if (level === null || level === undefined || level === "") return enc.default;
   if (level === "max") return enc.max;
   return Number(level);
@@ -85,7 +93,10 @@ const levelFor = (compression, level) => {
  * (or >= 23.8), where zlib.zstdCompressSync landed; older runtimes still serve
  * gzip/br/none. level may be a number, "max", or null (use the default).
  */
-export const assertCompressionSupported = (compression, level = null) => {
+export const assertCompressionSupported = (
+  compression: string,
+  level: CompressionLevel = null,
+) => {
   const enc = encodings[compression];
   if (!enc) {
     throw new Error(
@@ -116,7 +127,7 @@ export const assertCompressionSupported = (compression, level = null) => {
  * compress a body the way the named production encoding would, at the given
  * level (a number, "max", or null for the encoding's default).
  */
-const compress = (raw, encoding, level) => {
+const compress = (raw: Buffer, encoding: string, level: CompressionLevel) => {
   const lvl = levelFor(encoding, level);
   if (encoding === "br") {
     return brotliCompressSync(raw, {
@@ -142,7 +153,11 @@ const compressible = new Set([
 ]);
 
 /** the transferred size of one file - compressed as the server would serve it */
-const transferSize = (file, compression, level) => {
+const transferSize = (
+  file: string,
+  compression: string,
+  level: CompressionLevel,
+) => {
   const type = mimeTypes[extname(file)] ?? "application/octet-stream";
   if (compression !== "none" && compressible.has(type)) {
     return compress(readFileSync(file), compression, level).length;
@@ -162,10 +177,14 @@ const transferSize = (file, compression, level) => {
  * safety); the per-request Accept-Encoding check has no disk equivalent, so the
  * encoding is assumed accepted.
  */
-export const diskSizes = (dir, compression, level = null) => {
-  const files = {};
+export const diskSizes = (
+  dir: string,
+  compression: string,
+  level: CompressionLevel = null,
+): DiskSizes => {
+  const files: Record<string, number> = {};
   let total = 0;
-  const walk = (cur) => {
+  const walk = (cur: string) => {
     for (const entry of readdirSync(cur, { withFileTypes: true })) {
       const full = join(cur, entry.name);
       if (entry.isDirectory()) {
@@ -187,20 +206,20 @@ export const diskSizes = (dir, compression, level = null) => {
  */
 export const serve = (
   /** directory to serve */
-  dir,
+  dir: string,
   /** "gzip" | "br" | "zstd" | "none" */
-  compression,
+  compression: string,
   /** compression level for the chosen encoding; null uses its default */
-  level = null,
+  level: CompressionLevel = null,
 ) =>
-  new Promise((resolve) => {
+  new Promise<ServeHandle>((resolve) => {
     // track what the measuring browser advertises it can decode: if it never
     // offers the requested encoding it cannot decode it, the responses fall
     // back to uncompressed, and the measured bytes are meaningless. Surfaced
     // after the run via assertBrowserDecodes so the job fails rather than
     // silently reporting the wrong numbers
     let encodingSeen = false;
-    let acceptEncodingSample = null;
+    let acceptEncodingSample: string | null = null;
     const server = createSecureServer(
       {
         cert: readFileSync(join(certDir, "localhost-cert.pem")),
@@ -249,10 +268,10 @@ export const serve = (
       },
     );
     server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address();
+      const { port } = server.address() as { port: number };
       resolve({
         origin: `https://localhost:${port}`,
-        close: () => new Promise((r) => server.close(r)),
+        close: () => new Promise<void>((r) => server.close(() => r())),
         /**
          * throw if the measuring browser never advertised the requested
          * encoding - it cannot decode it, so the run silently fell back to
@@ -271,7 +290,7 @@ export const serve = (
           throw new Error(
             `the measuring browser never advertised "${compression}" in its ` +
               `Accept-Encoding (it sent "${acceptEncodingSample}"), so it cannot ` +
-              `decode ${encodings[compression].name} responses - the measured bytes ` +
+              `decode ${encodings[compression]!.name} responses - the measured bytes ` +
               `would be the uncompressed fallback, not real. Use a browser that ` +
               `supports it (zstd needs Chrome >= 123) or set compression to one ` +
               `it advertises.`,

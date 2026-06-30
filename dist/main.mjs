@@ -31,18 +31,18 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/defaults.js
+// node_modules/chrome-remote-interface/lib/defaults.js
 var require_defaults = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/defaults.js"(exports, module) {
+  "node_modules/chrome-remote-interface/lib/defaults.js"(exports, module) {
     "use strict";
     module.exports.HOST = "localhost";
     module.exports.PORT = 9222;
   }
 });
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/external-request.js
+// node_modules/chrome-remote-interface/lib/external-request.js
 var require_external_request = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/external-request.js"(exports, module) {
+  "node_modules/chrome-remote-interface/lib/external-request.js"(exports, module) {
     "use strict";
     var dns = __require("dns");
     var util = __require("util");
@@ -80,9 +80,9 @@ var require_external_request = __commonJS({
   }
 });
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/protocol.json
+// node_modules/chrome-remote-interface/lib/protocol.json
 var require_protocol = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/protocol.json"(exports, module) {
+  "node_modules/chrome-remote-interface/lib/protocol.json"(exports, module) {
     module.exports = {
       version: {
         major: "1",
@@ -27956,9 +27956,9 @@ Example URLs: http://www.google.com/file.html -> "google.com"
   }
 });
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/devtools.js
+// node_modules/chrome-remote-interface/lib/devtools.js
 var require_devtools = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/devtools.js"(exports, module) {
+  "node_modules/chrome-remote-interface/lib/devtools.js"(exports, module) {
     "use strict";
     var http = __require("http");
     var https = __require("https");
@@ -28071,9 +28071,9 @@ var require_devtools = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/constants.js
+// node_modules/ws/lib/constants.js
 var require_constants = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/constants.js"(exports, module) {
+  "node_modules/ws/lib/constants.js"(exports, module) {
     "use strict";
     module.exports = {
       BINARY_TYPES: ["nodebuffer", "arraybuffer", "fragments"],
@@ -28087,9 +28087,9 @@ var require_constants = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/buffer-util.js
+// node_modules/ws/lib/buffer-util.js
 var require_buffer_util = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/buffer-util.js"(exports, module) {
+  "node_modules/ws/lib/buffer-util.js"(exports, module) {
     "use strict";
     var { EMPTY_BUFFER } = require_constants();
     function concat(list, totalLength) {
@@ -28164,9 +28164,9 @@ var require_buffer_util = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/limiter.js
+// node_modules/ws/lib/limiter.js
 var require_limiter = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/limiter.js"(exports, module) {
+  "node_modules/ws/lib/limiter.js"(exports, module) {
     "use strict";
     var kDone = Symbol("kDone");
     var kRun = Symbol("kRun");
@@ -28214,9 +28214,9 @@ var require_limiter = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/permessage-deflate.js
+// node_modules/ws/lib/permessage-deflate.js
 var require_permessage_deflate = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/permessage-deflate.js"(exports, module) {
+  "node_modules/ws/lib/permessage-deflate.js"(exports, module) {
     "use strict";
     var zlib2 = __require("zlib");
     var bufferUtil = require_buffer_util();
@@ -28591,9 +28591,9 @@ var require_permessage_deflate = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/validation.js
+// node_modules/ws/lib/validation.js
 var require_validation = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/validation.js"(exports, module) {
+  "node_modules/ws/lib/validation.js"(exports, module) {
     "use strict";
     function isValidStatusCode(code) {
       return code >= 1e3 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006 || code >= 3e3 && code <= 4999;
@@ -28647,9 +28647,9 @@ var require_validation = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/receiver.js
+// node_modules/ws/lib/receiver.js
 var require_receiver = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/receiver.js"(exports, module) {
+  "node_modules/ws/lib/receiver.js"(exports, module) {
     "use strict";
     var { Writable } = __require("stream");
     var PerMessageDeflate = require_permessage_deflate();
@@ -29194,9 +29194,9 @@ var require_receiver = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/sender.js
+// node_modules/ws/lib/sender.js
 var require_sender = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/sender.js"(exports, module) {
+  "node_modules/ws/lib/sender.js"(exports, module) {
     "use strict";
     var net = __require("net");
     var tls = __require("tls");
@@ -29555,9 +29555,9 @@ var require_sender = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/event-target.js
+// node_modules/ws/lib/event-target.js
 var require_event_target = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/event-target.js"(exports, module) {
+  "node_modules/ws/lib/event-target.js"(exports, module) {
     "use strict";
     var Event = class {
       /**
@@ -29692,9 +29692,9 @@ var require_event_target = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/extension.js
+// node_modules/ws/lib/extension.js
 var require_extension = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/extension.js"(exports, module) {
+  "node_modules/ws/lib/extension.js"(exports, module) {
     "use strict";
     var tokenChars = [
       0,
@@ -29982,9 +29982,9 @@ var require_extension = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/websocket.js
+// node_modules/ws/lib/websocket.js
 var require_websocket = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/websocket.js"(exports, module) {
+  "node_modules/ws/lib/websocket.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var https = __require("https");
@@ -30763,9 +30763,9 @@ var require_websocket = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/stream.js
+// node_modules/ws/lib/stream.js
 var require_stream = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/stream.js"(exports, module) {
+  "node_modules/ws/lib/stream.js"(exports, module) {
     "use strict";
     var { Duplex } = __require("stream");
     function emitClose(stream) {
@@ -30878,9 +30878,9 @@ var require_stream = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/websocket-server.js
+// node_modules/ws/lib/websocket-server.js
 var require_websocket_server = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/websocket-server.js"(exports, module) {
+  "node_modules/ws/lib/websocket-server.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var http = __require("http");
@@ -31199,9 +31199,9 @@ var require_websocket_server = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/index.js
+// node_modules/ws/index.js
 var require_ws = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/index.js"(exports, module) {
+  "node_modules/ws/index.js"(exports, module) {
     "use strict";
     var WebSocket = require_websocket();
     WebSocket.createWebSocketStream = require_stream();
@@ -31212,9 +31212,9 @@ var require_ws = __commonJS({
   }
 });
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/api.js
+// node_modules/chrome-remote-interface/lib/api.js
 var require_api = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/api.js"(exports, module) {
+  "node_modules/chrome-remote-interface/lib/api.js"(exports, module) {
     "use strict";
     function arrayToObject(parameters) {
       const keyValue = {};
@@ -31295,9 +31295,9 @@ var require_api = __commonJS({
   }
 });
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/chrome.js
+// node_modules/chrome-remote-interface/lib/chrome.js
 var require_chrome = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/chrome.js"(exports, module) {
+  "node_modules/chrome-remote-interface/lib/chrome.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var util = __require("util");
@@ -31557,9 +31557,9 @@ var require_chrome = __commonJS({
   }
 });
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/index.js
+// node_modules/chrome-remote-interface/index.js
 var require_chrome_remote_interface = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/index.js"(exports, module) {
+  "node_modules/chrome-remote-interface/index.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var dns = __require("dns");
@@ -31597,14 +31597,14 @@ var require_chrome_remote_interface = __commonJS({
   }
 });
 
-// src/main.mjs
+// src/main.ts
 import { createHash as createHash2 } from "node:crypto";
 import { execSync } from "node:child_process";
 import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync2, rmSync as rmSync2, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join as join3, resolve } from "node:path";
 
-// src/formatBytes.mjs
+// src/formatBytes.ts
 var formatBytes = (n) => {
   if (n == null) return "\u2014";
   if (n < 1024) return `${n} B`;
@@ -31617,7 +31617,7 @@ var formatDuration = (ms) => {
   return `${Number((ms / 1e3).toFixed(2))}s`;
 };
 
-// src/comment.mjs
+// src/comment.ts
 var markerFor = (commentKey) => `<!-- true-site-size${commentKey ? `:${commentKey}` : ""} -->`;
 var baseHeader = (b) => {
   const name = b.url ? `[${b.ref}](${b.url})` : `\`${b.ref}\``;
@@ -31851,7 +31851,13 @@ ${runUrl ? `
 <sub>measured by [true-site-size](https://github.com/jimhigson/true-site-size)</sub>
 `;
 };
-var postComment = async (body, { token, repo, issueNumber, commentKey, apiUrl = "https://api.github.com" }) => {
+var postComment = async (body, {
+  token,
+  repo,
+  issueNumber,
+  commentKey,
+  apiUrl = "https://api.github.com"
+}) => {
   const marker = markerFor(commentKey);
   const headers = {
     authorization: `Bearer ${token}`,
@@ -31865,7 +31871,9 @@ var postComment = async (body, { token, repo, issueNumber, commentKey, apiUrl = 
   if (!listRes.ok) {
     throw new Error(`listing comments failed: ${listRes.status} ${await listRes.text()}`);
   }
-  const existing = (await listRes.json()).find((c) => c.body?.includes(marker));
+  const existing = (await listRes.json()).find(
+    (c) => c.body?.includes(marker)
+  );
   const target = existing ? { url: `${apiUrl}/repos/${repo}/issues/comments/${existing.id}`, method: "PATCH" } : {
     url: `${apiUrl}/repos/${repo}/issues/${issueNumber}/comments`,
     method: "POST"
@@ -31880,11 +31888,11 @@ var postComment = async (body, { token, repo, issueNumber, commentKey, apiUrl = 
   }
 };
 
-// src/measure.mjs
+// src/measure.ts
 var import_chrome_remote_interface = __toESM(require_chrome_remote_interface(), 1);
 import { spawn } from "node:child_process";
 
-// src/serve.mjs
+// src/serve.ts
 import { createHash, createPublicKey } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createSecureServer } from "node:http2";
@@ -32044,7 +32052,7 @@ var serve = (dir, compression, level = null) => new Promise((resolve2) => {
     const { port } = server.address();
     resolve2({
       origin: `https://localhost:${port}`,
-      close: () => new Promise((r) => server.close(r)),
+      close: () => new Promise((r) => server.close(() => r())),
       /**
        * throw if the measuring browser never advertised the requested
        * encoding - it cannot decode it, so the run silently fell back to
@@ -32064,19 +32072,19 @@ var serve = (dir, compression, level = null) => new Promise((resolve2) => {
   });
 });
 
-// src/measure.mjs
+// src/measure.ts
 import { existsSync as existsSync2, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as join2 } from "node:path";
 var chromeCandidates = [
-  process.env.CHROME_PATH,
+  process.env["CHROME_PATH"],
   "/usr/bin/google-chrome",
   "/usr/bin/google-chrome-stable",
   "/usr/bin/chromium-browser",
   "/usr/bin/chromium",
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/Applications/Chromium.app/Contents/MacOS/Chromium"
-].filter(Boolean);
+].filter((c) => Boolean(c));
 var findChrome = () => {
   const found = chromeCandidates.find((c) => existsSync2(c));
   if (!found) {
@@ -32157,7 +32165,13 @@ var keyDefs = {
     windowsVirtualKeyCode: 39
   }
 };
-var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, settleTimeoutMs, ignorePatterns }) => {
+var runJourney = async (steps, {
+  settleMs,
+  markTimeoutMs,
+  stepTimeoutMs,
+  settleTimeoutMs,
+  ignorePatterns
+}) => {
   const chrome = await launchChrome();
   const client = await (0, import_chrome_remote_interface.default)({ port: chrome.port });
   const { Network, Page, Runtime, Input, Target } = client;
@@ -32228,7 +32242,10 @@ var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, settleT
       });
       lastActivity = Date.now();
     };
-    const onLoadingFinished = ({ requestId, encodedDataLength }, sessionId) => {
+    const onLoadingFinished = ({
+      requestId,
+      encodedDataLength
+    }, sessionId) => {
       const key = keyOf(sessionId, requestId);
       const entry = inflight.get(key);
       if (!entry) return;
@@ -32460,7 +32477,14 @@ var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, settleT
   }
   return results;
 };
-var measure = async (steps, { runs, settleMs, markTimeoutMs, stepTimeoutMs, settleTimeoutMs, ignorePatterns }) => {
+var measure = async (steps, {
+  runs,
+  settleMs,
+  markTimeoutMs,
+  stepTimeoutMs,
+  settleTimeoutMs,
+  ignorePatterns
+}) => {
   const allRuns = [];
   for (let i = 0; i < runs; i++) {
     allRuns.push(
@@ -32475,9 +32499,9 @@ var measure = async (steps, { runs, settleMs, markTimeoutMs, stepTimeoutMs, sett
   }
   const rowCount = Math.max(...allRuns.map((r) => r.length));
   return Array.from({ length: rowCount }, (_, i) => {
-    const runsFor = allRuns.map((run2) => run2[i]).filter(Boolean);
-    const errored = runsFor.find((r) => r?.error);
-    const ok = runsFor.filter((r) => r && !r.error);
+    const runsFor = allRuns.map((run2) => run2[i]).filter((r) => Boolean(r));
+    const errored = runsFor.find((r) => r.error);
+    const ok = runsFor.filter((r) => !r.error);
     if (ok.length === 0) {
       return { name: errored?.name ?? `row ${i + 1}`, error: errored?.error };
     }
@@ -32495,7 +32519,7 @@ var measure = async (steps, { runs, settleMs, markTimeoutMs, stepTimeoutMs, sett
   });
 };
 
-// src/main.mjs
+// src/main.ts
 var input = (name, fallback, { allowEmpty = false } = {}) => {
   const v = process.env[`INPUT_${name.toUpperCase().replaceAll("-", "_")}`];
   if (v === void 0) return fallback;
@@ -32528,12 +32552,11 @@ var buildAndMeasure = async (checkoutDir, config) => {
 };
 var main = async () => {
   const journeyInput = input("journey", "");
-  const scenarioSugar = JSON.parse(input("scenarios", "[]")).flatMap(
-    (s, i) => [
-      { goto: s.url },
-      { row: s.name ?? `scenario ${i + 1}`, mark: s.mark }
-    ]
-  );
+  const scenarios = JSON.parse(input("scenarios", "[]"));
+  const scenarioSugar = scenarios.flatMap((s, i) => [
+    { goto: s.url },
+    { row: s.name ?? `scenario ${i + 1}`, mark: s.mark }
+  ]);
   const config = {
     steps: journeyInput ? JSON.parse(journeyInput) : scenarioSugar,
     installCommand: input("install-command", "", { allowEmpty: true }),
@@ -32570,7 +32593,7 @@ var main = async () => {
     // also report the total built size on disk (every file, compressed as
     // served). Off skips compressing the whole site - cheaper on large builds
     measureDisk: input("measure-disk", "true") === "true",
-    token: input("github-token", process.env.GITHUB_TOKEN ?? "")
+    token: input("github-token", process.env["GITHUB_TOKEN"] ?? "")
   };
   if (config.steps.length === 0) {
     throw new Error(
@@ -32584,7 +32607,7 @@ var main = async () => {
     );
     process.exit(1);
   }, config.timeoutMs).unref();
-  const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
+  const workspace = process.env["GITHUB_WORKSPACE"] ?? process.cwd();
   const logBreakdown = (label, results) => {
     for (const r of results) {
       if (r.error) {
@@ -32616,12 +32639,12 @@ var main = async () => {
       `[true-site-size] head total built size on disk: ${formatBytes(headDisk.total)} over ${Object.keys(headDisk.files).length} files`
     );
   }
-  const eventPath = process.env.GITHUB_EVENT_PATH;
+  const eventPath = process.env["GITHUB_EVENT_PATH"];
   const event = eventPath && existsSync3(eventPath) ? JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(eventPath, "utf8"))) : {};
   const prBase = event.pull_request?.base?.ref;
   const compareRefs = config.baseRefs.length ? config.baseRefs : prBase ? [prBase] : [];
-  const serverUrl = process.env.GITHUB_SERVER_URL;
-  const repo = process.env.GITHUB_REPOSITORY;
+  const serverUrl = process.env["GITHUB_SERVER_URL"];
+  const repo = process.env["GITHUB_REPOSITORY"];
   const configHash = createHash2("sha256").update(
     JSON.stringify({
       steps: config.steps,
@@ -32637,7 +32660,7 @@ var main = async () => {
       measureDisk: config.measureDisk
     })
   ).digest("hex").slice(0, 16);
-  const cacheDir = process.env.TRUE_SITE_SIZE_CACHE_DIR ?? (process.env.GITHUB_ACTIONS ? join3(homedir(), ".true-site-size-cache") : null);
+  const cacheDir = process.env["TRUE_SITE_SIZE_CACHE_DIR"] ?? (process.env["GITHUB_ACTIONS"] ? join3(homedir(), ".true-site-size-cache") : null);
   let cleaned = false;
   const cleanOnce = () => {
     if (config.cleanCommand && !cleaned) {
@@ -32712,7 +32735,7 @@ var main = async () => {
   for (const ref of compareRefs) {
     bases.push(await measureBaseRef(ref));
   }
-  const runUrl = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : void 0;
+  const runUrl = process.env["GITHUB_RUN_ID"] ? `${process.env["GITHUB_SERVER_URL"]}/${process.env["GITHUB_REPOSITORY"]}/actions/runs/${process.env["GITHUB_RUN_ID"]}` : void 0;
   const body = formatComment(head, bases, {
     runUrl,
     commentKey: config.commentKey,
@@ -32728,18 +32751,18 @@ var main = async () => {
   if (config.comment && issueNumber && config.token) {
     await postComment(body, {
       token: config.token,
-      repo: process.env.GITHUB_REPOSITORY,
+      repo: process.env["GITHUB_REPOSITORY"],
       issueNumber,
       commentKey: config.commentKey,
-      apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com"
+      apiUrl: process.env["GITHUB_API_URL"] ?? "https://api.github.com"
     });
     console.log("[true-site-size] comment posted");
   }
-  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+  const summaryPath = process.env["GITHUB_STEP_SUMMARY"];
   if (summaryPath) {
     await import("node:fs").then((fs) => fs.appendFileSync(summaryPath, body));
   }
-  const outputFile = process.env.TRUE_SITE_SIZE_OUTPUT_FILE;
+  const outputFile = process.env["TRUE_SITE_SIZE_OUTPUT_FILE"];
   if (outputFile) {
     writeFileSync(outputFile, body);
   }

@@ -1,21 +1,38 @@
 import CDP from "chrome-remote-interface";
 import { spawn } from "node:child_process";
 
-import { formatDuration } from "./formatBytes.mjs";
-import { certSpkiHash } from "./serve.mjs";
+import { formatDuration } from "./formatBytes.ts";
+import { certSpkiHash } from "./serve.ts";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { Config, JourneyStep, RequestLogEntry, RowResult } from "./types.ts";
+
+/** the measurement options runJourney needs (a subset of the action config) */
+type JourneyOptions = Pick<
+  Config,
+  "settleMs" | "markTimeoutMs" | "stepTimeoutMs" | "settleTimeoutMs" | "ignorePatterns"
+>;
+/** measure runs a journey several times: the journey options plus the count */
+type MeasureOptions = JourneyOptions & Pick<Config, "runs">;
+
+/** an in-flight request tracked while a segment is open */
+interface InflightEntry {
+  url: string;
+  responded: boolean;
+  dataBytes: number;
+}
+
 const chromeCandidates = [
-  process.env.CHROME_PATH,
+  process.env["CHROME_PATH"],
   "/usr/bin/google-chrome",
   "/usr/bin/google-chrome-stable",
   "/usr/bin/chromium-browser",
   "/usr/bin/chromium",
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/Applications/Chromium.app/Contents/MacOS/Chromium",
-].filter(Boolean);
+].filter((c): c is string => Boolean(c));
 
 export const findChrome = () => {
   const found = chromeCandidates.find((c) => existsSync(c));
@@ -57,7 +74,7 @@ const launchChrome = async () => {
     ],
     { stdio: ["ignore", "ignore", "pipe"] },
   );
-  const port = await new Promise((resolve, reject) => {
+  const port = await new Promise<number>((resolve, reject) => {
     let stderr = "";
     const timer = setTimeout(
       () => reject(new Error(`chrome did not start: ${stderr}`)),
@@ -84,10 +101,13 @@ const launchChrome = async () => {
   };
 };
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** named keys for the `keys` step; single characters pass through */
-const keyDefs = {
+const keyDefs: Record<
+  string,
+  { key: string; code: string; windowsVirtualKeyCode?: number; text?: string }
+> = {
   Enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },
   Escape: { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 },
   Tab: { key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 },
@@ -121,13 +141,19 @@ const keyDefs = {
  * endpoints whose response size legitimately varies (eg live db reads).
  */
 export const runJourney = async (
-  steps,
-  { settleMs, markTimeoutMs, stepTimeoutMs, settleTimeoutMs, ignorePatterns },
-) => {
+  steps: JourneyStep[],
+  {
+    settleMs,
+    markTimeoutMs,
+    stepTimeoutMs,
+    settleTimeoutMs,
+    ignorePatterns,
+  }: JourneyOptions,
+): Promise<RowResult[]> => {
   const chrome = await launchChrome();
   const client = await CDP({ port: chrome.port });
   const { Network, Page, Runtime, Input, Target } = client;
-  const results = [];
+  const results: RowResult[] = [];
   const ignoreRes = (ignorePatterns ?? []).map((p) => new RegExp(p));
 
   try {
@@ -184,17 +210,18 @@ export const runJourney = async (
     let ignoredBytes = 0;
     let lastActivity = Date.now();
     let segmentStart = Date.now();
-    let requestLog = [];
+    let requestLog: RequestLogEntry[] = [];
     /** key -> { url, responded, dataBytes } */
-    const inflight = new Map();
+    const inflight = new Map<string, InflightEntry>();
 
-    const isIgnored = (url) => ignoreRes.some((re) => re.test(url));
+    const isIgnored = (url: string) => ignoreRes.some((re) => re.test(url));
 
     // network events arrive from the page session and any attached worker
     // sessions; requestIds are only unique per session, so key on both
-    const keyOf = (sessionId, requestId) => `${sessionId ?? "page"}:${requestId}`;
+    const keyOf = (sessionId: string | undefined, requestId: string) =>
+      `${sessionId ?? "page"}:${requestId}`;
 
-    const countAs = (url, byteCount, note) => {
+    const countAs = (url: string, byteCount: number, note?: string) => {
       const ignored = isIgnored(url);
       if (ignored) {
         ignoredBytes += byteCount;
@@ -211,7 +238,10 @@ export const runJourney = async (
       });
     };
 
-    const onRequestWillBeSent = ({ requestId, request }, sessionId) => {
+    const onRequestWillBeSent = (
+      { requestId, request }: { requestId: string; request: { url: string } },
+      sessionId: string | undefined,
+    ) => {
       if (request.url.startsWith("data:")) return;
       const key = keyOf(sessionId, requestId);
       inflight.set(key, {
@@ -221,7 +251,13 @@ export const runJourney = async (
       });
       lastActivity = Date.now();
     };
-    const onLoadingFinished = ({ requestId, encodedDataLength }, sessionId) => {
+    const onLoadingFinished = (
+      {
+        requestId,
+        encodedDataLength,
+      }: { requestId: string; encodedDataLength: number },
+      sessionId: string | undefined,
+    ) => {
       const key = keyOf(sessionId, requestId);
       const entry = inflight.get(key);
       if (!entry) return;
@@ -229,7 +265,10 @@ export const runJourney = async (
       countAs(entry.url, encodedDataLength);
       lastActivity = Date.now();
     };
-    const onLoadingFailed = ({ requestId }, sessionId) => {
+    const onLoadingFailed = (
+      { requestId }: { requestId: string },
+      sessionId: string | undefined,
+    ) => {
       const key = keyOf(sessionId, requestId);
       if (!inflight.has(key)) return;
       inflight.delete(key);
@@ -288,7 +327,7 @@ export const runJourney = async (
       segmentStart = Date.now();
     };
 
-    const waitForMark = async (mark, timeoutMs) => {
+    const waitForMark = async (mark: string, timeoutMs: number) => {
       const start = Date.now();
       for (;;) {
         const { result } = await Runtime.evaluate({
@@ -338,7 +377,7 @@ export const runJourney = async (
     };
 
     /** wait for selector to exist + be visible; returns its centre point */
-    const waitForClickable = async (selector) => {
+    const waitForClickable = async (selector: string) => {
       const start = Date.now();
       for (;;) {
         const { result } = await Runtime.evaluate({
@@ -373,7 +412,7 @@ export const runJourney = async (
       }
     };
 
-    let stepError = null;
+    let stepError: string | null = null;
     for (const step of steps) {
       try {
         if (step.afterMark) {
@@ -444,8 +483,10 @@ export const runJourney = async (
           }
         } else if (step.row !== undefined) {
           // a row may wait on one mark or several (all must fire) - for apps
-          // whose "ready" is the conjunction of independently-loading parts
-          const marks = step.marks ?? [step.mark];
+          // whose "ready" is the conjunction of independently-loading parts.
+          // a row always carries one of mark/marks, so the single-mark
+          // fallback is non-null
+          const marks = step.marks ?? [step.mark!];
           const deadline = Date.now() + markTimeoutMs;
           for (const mark of marks) {
             const markTime = await waitForMark(
@@ -473,7 +514,7 @@ export const runJourney = async (
           throw new Error(`unrecognised step: ${JSON.stringify(step)}`);
         }
       } catch (e) {
-        stepError = e.message;
+        stepError = (e as Error).message;
         break;
       }
     }
@@ -500,10 +541,17 @@ export const runJourney = async (
  * disagreement is surfaced as bytesSpread.
  */
 export const measure = async (
-  steps,
-  { runs, settleMs, markTimeoutMs, stepTimeoutMs, settleTimeoutMs, ignorePatterns },
-) => {
-  const allRuns = [];
+  steps: JourneyStep[],
+  {
+    runs,
+    settleMs,
+    markTimeoutMs,
+    stepTimeoutMs,
+    settleTimeoutMs,
+    ignorePatterns,
+  }: MeasureOptions,
+): Promise<RowResult[]> => {
+  const allRuns: RowResult[][] = [];
   for (let i = 0; i < runs; i++) {
     allRuns.push(
       await runJourney(steps, {
@@ -516,19 +564,21 @@ export const measure = async (
     );
   }
   const rowCount = Math.max(...allRuns.map((r) => r.length));
-  return Array.from({ length: rowCount }, (_, i) => {
-    const runsFor = allRuns.map((run) => run[i]).filter(Boolean);
-    const errored = runsFor.find((r) => r?.error);
-    const ok = runsFor.filter((r) => r && !r.error);
+  return Array.from({ length: rowCount }, (_, i): RowResult => {
+    const runsFor = allRuns
+      .map((run) => run[i])
+      .filter((r): r is RowResult => Boolean(r));
+    const errored = runsFor.find((r) => r.error);
+    const ok = runsFor.filter((r) => !r.error);
     if (ok.length === 0) {
       return { name: errored?.name ?? `row ${i + 1}`, error: errored?.error };
     }
-    const bytesValues = ok.map((r) => r.bytes);
+    const bytesValues = ok.map((r) => r.bytes!);
     const min = Math.min(...bytesValues);
     const max = Math.max(...bytesValues);
     const best = ok.find((r) => r.bytes === min);
     return {
-      ...best,
+      ...best!,
       bytesSpread: max - min,
       ...(errored && {
         error: `succeeded in only ${ok.length}/${runsFor.length} runs: ${errored.error}`,

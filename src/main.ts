@@ -4,30 +4,45 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { formatComment, postComment } from "./comment.mjs";
-import { formatBytes, formatDuration } from "./formatBytes.mjs";
-import { measure } from "./measure.mjs";
-import { assertCompressionSupported, diskSizes, serve } from "./serve.mjs";
+import { formatComment, postComment } from "./comment.ts";
+import { formatBytes, formatDuration } from "./formatBytes.ts";
+import { measure } from "./measure.ts";
+import { assertCompressionSupported, diskSizes, serve } from "./serve.ts";
+
+import type {
+  BaseRef,
+  BuiltResult,
+  Config,
+  JourneyStep,
+  RowResult,
+} from "./types.ts";
 
 /**
  * read an action input (the INPUT_* convention used by github actions).
  * An empty string counts as explicitly set when allowEmpty is given - eg
  * build-command "" means "skip the build", not "use the default"
  */
-const input = (name, fallback, { allowEmpty = false } = {}) => {
+const input = (
+  name: string,
+  fallback: string,
+  { allowEmpty = false }: { allowEmpty?: boolean } = {},
+) => {
   const v = process.env[`INPUT_${name.toUpperCase().replaceAll("-", "_")}`];
   if (v === undefined) return fallback;
   if (v === "" && !allowEmpty) return fallback;
   return v;
 };
 
-const run = (cmd, cwd) => {
+const run = (cmd: string, cwd: string) => {
   console.log(`[true-site-size] $ ${cmd} (in ${cwd})`);
   execSync(cmd, { cwd, stdio: "inherit" });
 };
 
 /** build a checkout and measure all scenarios against its served output */
-const buildAndMeasure = async (checkoutDir, config) => {
+const buildAndMeasure = async (
+  checkoutDir: string,
+  config: Config,
+): Promise<BuiltResult> => {
   if (config.installCommand) run(config.installCommand, checkoutDir);
   if (config.buildCommand) run(config.buildCommand, checkoutDir);
   const serveDir = resolve(checkoutDir, config.serveDir);
@@ -61,13 +76,16 @@ const main = async () => {
   // a journey is the full step language; the simpler `scenarios` input is
   // sugar for goto/row pairs
   const journeyInput = input("journey", "");
-  const scenarioSugar = JSON.parse(input("scenarios", "[]")).flatMap(
-    (s, i) => [
-      { goto: s.url },
-      { row: s.name ?? `scenario ${i + 1}`, mark: s.mark },
-    ],
-  );
-  const config = {
+  const scenarios = JSON.parse(input("scenarios", "[]")) as {
+    url: string;
+    name?: string;
+    mark?: string;
+  }[];
+  const scenarioSugar: JourneyStep[] = scenarios.flatMap((s, i) => [
+    { goto: s.url },
+    { row: s.name ?? `scenario ${i + 1}`, mark: s.mark },
+  ]);
+  const config: Config = {
     steps: journeyInput ? JSON.parse(journeyInput) : scenarioSugar,
     installCommand: input("install-command", "", { allowEmpty: true }),
     buildCommand: input("build-command", "npm run build", { allowEmpty: true }),
@@ -103,7 +121,7 @@ const main = async () => {
     // also report the total built size on disk (every file, compressed as
     // served). Off skips compressing the whole site - cheaper on large builds
     measureDisk: input("measure-disk", "true") === "true",
-    token: input("github-token", process.env.GITHUB_TOKEN ?? ""),
+    token: input("github-token", process.env["GITHUB_TOKEN"] ?? ""),
   };
   if (config.steps.length === 0) {
     throw new Error(
@@ -125,9 +143,9 @@ const main = async () => {
     process.exit(1);
   }, config.timeoutMs).unref();
 
-  const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
+  const workspace = process.env["GITHUB_WORKSPACE"] ?? process.cwd();
 
-  const logBreakdown = (label, results) => {
+  const logBreakdown = (label: string, results: RowResult[]) => {
     for (const r of results) {
       if (r.error) {
         console.log(`[true-site-size] ${label} / ${r.name}: ${r.error}`);
@@ -162,7 +180,7 @@ const main = async () => {
 
   // the github event payload supplies the PR's base ref (the default to
   // compare against) and its number (for commenting)
-  const eventPath = process.env.GITHUB_EVENT_PATH;
+  const eventPath = process.env["GITHUB_EVENT_PATH"];
   const event =
     eventPath && existsSync(eventPath) ?
       JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(eventPath, "utf8")))
@@ -175,8 +193,8 @@ const main = async () => {
     : prBase ? [prBase]
     : [];
 
-  const serverUrl = process.env.GITHUB_SERVER_URL;
-  const repo = process.env.GITHUB_REPOSITORY;
+  const serverUrl = process.env["GITHUB_SERVER_URL"];
+  const repo = process.env["GITHUB_REPOSITORY"];
 
   // every base ref shares the measurement config, so they share a cache key;
   // the base sha distinguishes them on disk. The cache dir is persisted between
@@ -201,8 +219,8 @@ const main = async () => {
     .digest("hex")
     .slice(0, 16);
   const cacheDir =
-    process.env.TRUE_SITE_SIZE_CACHE_DIR ??
-    (process.env.GITHUB_ACTIONS ?
+    process.env["TRUE_SITE_SIZE_CACHE_DIR"] ??
+    (process.env["GITHUB_ACTIONS"] ?
       join(homedir(), ".true-site-size-cache")
     : null);
 
@@ -221,8 +239,8 @@ const main = async () => {
   };
 
   /** fetch, identify and measure one base ref; never throws */
-  const measureBaseRef = async (ref) => {
-    const base = { ref, sha: null, describe: null, url: null };
+  const measureBaseRef = async (ref: string): Promise<BaseRef> => {
+    const base: BaseRef = { ref, sha: null, describe: null, url: null };
 
     // resolve the ref first: a bad ref name or fetch failure marks just this
     // column rather than failing the whole run. --tags + a bounded depth let
@@ -266,7 +284,7 @@ const main = async () => {
       console.log(
         `[true-site-size] base (${ref} @ ${base.sha.slice(0, 9)}) loaded from cache - skipping its build and measurement`,
       );
-      logBreakdown(`base ${ref} (cached)`, base.results);
+      logBreakdown(`base ${ref} (cached)`, base.results!);
       return base;
     }
 
@@ -283,7 +301,7 @@ const main = async () => {
       // only cache fully-successful measurements: an error row (eg a missing
       // mark, or a flaky run) must not persist for this sha
       if (cacheFile && base.results.every((r) => !r.error)) {
-        mkdirSync(cacheDir, { recursive: true });
+        mkdirSync(cacheDir!, { recursive: true });
         writeFileSync(
           cacheFile,
           JSON.stringify({ results: base.results, disk: base.disk }),
@@ -292,9 +310,9 @@ const main = async () => {
       }
     } catch (e) {
       console.warn(
-        `[true-site-size] base ${ref} could not be measured (its column will say so): ${e.message}`,
+        `[true-site-size] base ${ref} could not be measured (its column will say so): ${(e as Error).message}`,
       );
-      base.error = e.message;
+      base.error = (e as Error).message;
       base.results = null;
       base.disk = null;
     } finally {
@@ -308,14 +326,14 @@ const main = async () => {
     return base;
   };
 
-  const bases = [];
+  const bases: BaseRef[] = [];
   for (const ref of compareRefs) {
     bases.push(await measureBaseRef(ref));
   }
 
   const runUrl =
-    process.env.GITHUB_RUN_ID ?
-      `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+    process.env["GITHUB_RUN_ID"] ?
+      `${process.env["GITHUB_SERVER_URL"]}/${process.env["GITHUB_REPOSITORY"]}/actions/runs/${process.env["GITHUB_RUN_ID"]}`
     : undefined;
   const body = formatComment(head, bases, {
     runUrl,
@@ -333,16 +351,16 @@ const main = async () => {
   if (config.comment && issueNumber && config.token) {
     await postComment(body, {
       token: config.token,
-      repo: process.env.GITHUB_REPOSITORY,
+      repo: process.env["GITHUB_REPOSITORY"]!,
       issueNumber,
       commentKey: config.commentKey,
-      apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com",
+      apiUrl: process.env["GITHUB_API_URL"] ?? "https://api.github.com",
     });
     console.log("[true-site-size] comment posted");
   }
 
   // expose results for downstream steps
-  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+  const summaryPath = process.env["GITHUB_STEP_SUMMARY"];
   if (summaryPath) {
     await import("node:fs").then((fs) => fs.appendFileSync(summaryPath, body));
   }
@@ -350,7 +368,7 @@ const main = async () => {
   // also write the comment markdown to an explicit file when asked. Useful for
   // local runs (eg via act, where GITHUB_STEP_SUMMARY is inside the container
   // and not readable on the host) that want to read the report back out.
-  const outputFile = process.env.TRUE_SITE_SIZE_OUTPUT_FILE;
+  const outputFile = process.env["TRUE_SITE_SIZE_OUTPUT_FILE"];
   if (outputFile) {
     writeFileSync(outputFile, body);
   }
