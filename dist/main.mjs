@@ -32366,6 +32366,23 @@ var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, settleT
         }
         if (step.goto !== void 0) {
           await Page.navigate({ url: step.goto });
+        } else if (step.waitFor !== void 0 || step.waitForGone !== void 0) {
+          const selector = step.waitFor ?? step.waitForGone;
+          const wantPresent = step.waitFor !== void 0;
+          const start = Date.now();
+          for (; ; ) {
+            const { result } = await Runtime.evaluate({
+              expression: `document.querySelector(${JSON.stringify(selector)}) !== null`,
+              returnByValue: true
+            });
+            if (result.value === wantPresent) break;
+            if (Date.now() - start > stepTimeoutMs) {
+              throw new Error(
+                `${wantPresent ? "waitFor" : "waitForGone"} "${selector}" ${wantPresent ? "not present" : "still present"} within ${formatDuration(stepTimeoutMs)}`
+              );
+            }
+            await sleep(50);
+          }
         } else if (step.click !== void 0) {
           const { x, y } = await waitForClickable(step.click);
           for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
@@ -32382,6 +32399,7 @@ var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, settleT
             const def = keyDefs[name] ?? (name.length === 1 ? { key: name, code: `Key${name.toUpperCase()}`, text: name } : null);
             if (!def) throw new Error(`unknown key: ${name}`);
             await Input.dispatchKeyEvent({ type: "keyDown", ...def });
+            await sleep(100);
             await Input.dispatchKeyEvent({ type: "keyUp", ...def });
             await sleep(80);
           }
@@ -32391,7 +32409,9 @@ var runJourney = async (steps, { settleMs, markTimeoutMs, stepTimeoutMs, settleT
             awaitPromise: true
           });
           if (exceptionDetails) {
-            throw new Error(`script step threw: ${exceptionDetails.text}`);
+            throw new Error(
+              `script step threw: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`
+            );
           }
         } else if (step.row !== void 0) {
           const marks = step.marks ?? [step.mark];

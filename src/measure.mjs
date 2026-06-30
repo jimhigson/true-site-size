@@ -385,6 +385,25 @@ export const runJourney = async (
 
         if (step.goto !== undefined) {
           await Page.navigate({ url: step.goto });
+        } else if (step.waitFor !== undefined || step.waitForGone !== undefined) {
+          // wait until a css selector becomes present (waitFor) or absent
+          // (waitForGone, eg a loading dialog has cleared) before acting
+          const selector = step.waitFor ?? step.waitForGone;
+          const wantPresent = step.waitFor !== undefined;
+          const start = Date.now();
+          for (;;) {
+            const { result } = await Runtime.evaluate({
+              expression: `document.querySelector(${JSON.stringify(selector)}) !== null`,
+              returnByValue: true,
+            });
+            if (result.value === wantPresent) break;
+            if (Date.now() - start > stepTimeoutMs) {
+              throw new Error(
+                `${wantPresent ? "waitFor" : "waitForGone"} "${selector}" ${wantPresent ? "not present" : "still present"} within ${formatDuration(stepTimeoutMs)}`,
+              );
+            }
+            await sleep(50);
+          }
         } else if (step.click !== undefined) {
           const { x, y } = await waitForClickable(step.click);
           for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
@@ -405,6 +424,10 @@ export const runJourney = async (
               : null);
             if (!def) throw new Error(`unknown key: ${name}`);
             await Input.dispatchKeyEvent({ type: "keyDown", ...def });
+            // hold before releasing: input loops that sample the keyboard once
+            // per animation frame (eg a game reading key state per tick) never
+            // see a press that goes down and up within a single frame
+            await sleep(100);
             await Input.dispatchKeyEvent({ type: "keyUp", ...def });
             await sleep(80);
           }
@@ -414,7 +437,10 @@ export const runJourney = async (
             awaitPromise: true,
           });
           if (exceptionDetails) {
-            throw new Error(`script step threw: ${exceptionDetails.text}`);
+            // .text is just "Uncaught"; the real message/stack is on .exception
+            throw new Error(
+              `script step threw: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`,
+            );
           }
         } else if (step.row !== undefined) {
           // a row may wait on one mark or several (all must fire) - for apps

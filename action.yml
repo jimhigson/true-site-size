@@ -13,8 +13,9 @@ inputs:
   journey:
     description: >
       JSON array of steps measuring an interactive journey in one browser
-      session: {goto: url}, {click: selector}, {keys: "Enter ArrowDown"},
-      {script: "..."}, {row: name, mark: markName}. Each row step closes a
+      session: {goto: url}, {click: selector}, {waitFor: selector},
+      {waitForGone: selector}, {keys: "Enter ArrowDown"}, {script: "..."},
+      {row: name, mark: markName}. Each row step closes a
       measurement segment when its performance.mark fires and the network
       settles; {row: name, marks: [m1, m2]} waits for all the named marks,
       for apps whose readiness is several independently-loading parts. Any

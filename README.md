@@ -96,7 +96,9 @@ journey: |
 | --- | --- |
 | `{ "goto": url }` | navigate (relative urls resolve against the local server) |
 | `{ "click": selector }` | wait for the selector to exist and be visible (up to `step-timeout-ms`), scroll to it, send a *trusted* click to its centre (`display:contents` elements are clicked via their first descendant with a box) |
-| `{ "keys": "ArrowDown Enter" }` | trusted key presses, space-separated (named keys or single characters) |
+| `{ "waitFor": selector }` | wait (up to `step-timeout-ms`) until the selector is present in the dom |
+| `{ "waitForGone": selector }` | wait until the selector is *no longer* present — eg a loading dialog has cleared before you click to dismiss it |
+| `{ "keys": "ArrowDown Enter" }` | trusted key presses, space-separated (named keys or single characters); each is held briefly so per-frame input loops (eg a game) register it |
 | `{ "script": "..." }` | evaluate in the page, awaited if it returns a promise — the escape hatch |
 | `{ "row": name, "mark": markName }` | wait for the `performance.mark`, let the network settle, close the segment as a comment row |
 | `{ "row": name, "marks": [m1, m2] }` | as `mark`, but waits for *all* the named marks - for apps whose readiness is several independently-loading parts |
