@@ -122,6 +122,13 @@ for anything exotic.
   without leaving the PR. Changed rows are an expandable `<details>` by default
   (`collapse-breakdown: false` shows them inline); rows with no changes are a
   plain line, since there's nothing to reveal
+- a **💾 total built size on disk** section below the loaded one: the
+  compressed (as served) size of *every* file in `serve-dir`, loaded or not,
+  with the relative (%) change and its own per-ref changed-files breakdown.
+  Where the loaded bytes catch eager over-loading, this catches dead weight
+  that ships but never loads — so the two can move in opposite directions (a
+  PR can shrink the loaded path while growing the bundle, or vice versa).
+  Disable with `measure-disk: false`
 - 🔁 callouts for any url downloaded in full more than once in a segment — a
   standing duplicate-fetch bug in the app
 - rows that could not be measured say why, explicitly: `unable to measure -
@@ -229,6 +236,7 @@ Only fully-successful base measurements are cached.
 | `strip-hash` | vite-style | regex stripped from filenames for per-file matching; `""` disables |
 | `comment` | `true` | post/update the PR comment |
 | `collapse-breakdown` | `true` | collapse each ref's changed-file breakdown into an expandable `<details>`; `false` shows it inline |
+| `measure-disk` | `true` | also report total built size on disk (compressed as served, every file in serve-dir); `false` skips the cost on large sites |
 | `comment-key` | `""` | maintain separate comments per key |
 | `github-token` | `${{ github.token }}` | for the comment |
 

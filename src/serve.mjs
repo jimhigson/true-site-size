@@ -1,7 +1,7 @@
 import { createHash, createPublicKey } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createSecureServer } from "node:http2";
-import { extname, join, normalize } from "node:path";
+import { extname, join, normalize, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 // zstd lives behind a namespace import on purpose: zlib.zstdCompressSync only
@@ -10,7 +10,7 @@ import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 // action for everyone, including gzip/br users. A namespace access is undefined
 // (not a load error) when absent, so we can detect it and report it cleanly.
 import * as zlib from "node:zlib";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 // production sites serve h2, whose compressed headers make per-request
 // overhead far smaller than http/1.1 - measuring over h2 keeps wire bytes
@@ -140,6 +140,46 @@ const compressible = new Set([
   "image/svg+xml",
   "application/manifest+json",
 ]);
+
+/** the transferred size of one file - compressed as the server would serve it */
+const transferSize = (file, compression, level) => {
+  const type = mimeTypes[extname(file)] ?? "application/octet-stream";
+  if (compression !== "none" && compressible.has(type)) {
+    return compress(readFileSync(file), compression, level).length;
+  }
+  // non-compressible (or compression off): the raw file streams unchanged.
+  // statSync avoids reading large binaries (images, wasm) just to size them
+  return statSync(file).size;
+};
+
+/**
+ * Walk a built site directory and total the size every file would transfer at,
+ * compressed exactly as `serve` would serve it. This is the whole site's
+ * download weight - loaded or not - versus the loaded-to-ready subset the
+ * browser measurement captures. Returns { total, files } where files maps each
+ * POSIX-relative path to its transferred bytes (a plain, JSON-serialisable
+ * object so it can ride in the base cache). Symlinks are skipped (cycle/escape
+ * safety); the per-request Accept-Encoding check has no disk equivalent, so the
+ * encoding is assumed accepted.
+ */
+export const diskSizes = (dir, compression, level = null) => {
+  const files = {};
+  let total = 0;
+  const walk = (cur) => {
+    for (const entry of readdirSync(cur, { withFileTypes: true })) {
+      const full = join(cur, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile()) {
+        const size = transferSize(full, compression, level);
+        files[relative(dir, full).split(sep).join("/")] = size;
+        total += size;
+      }
+    }
+  };
+  walk(dir);
+  return { total, files };
+};
 
 /**
  * Serve a static directory the way a production host would, simulating the

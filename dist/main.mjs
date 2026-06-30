@@ -31639,7 +31639,9 @@ var formatComment = (head, bases, {
   stripHash,
   spreadToleranceBytes = 0,
   minimumChangeThreshold = 1,
-  collapsibleBreakdown = true
+  collapsibleBreakdown = true,
+  headDisk = null,
+  measureDisk = true
 }) => {
   const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
   const fileOf = (url) => {
@@ -31661,11 +31663,7 @@ var formatComment = (head, bases, {
     if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "\u{1F7F0}";
     return `${d > 0 ? "\u{1F4C8} +" : "\u{1F4C9} -"}${formatBytes(Math.abs(d))}`;
   };
-  const fileDiff = (h, b) => {
-    const br = baseRowFor(b, h.name);
-    if (h.error || !br || br.error) return null;
-    const headFiles = filesOf(h.requestLog);
-    const baseFiles = filesOf(br.requestLog);
+  const diffMaps = (headFiles, baseFiles) => {
     const all = [.../* @__PURE__ */ new Set([...headFiles.keys(), ...baseFiles.keys()])];
     const changed = all.map((f) => {
       const hb = headFiles.get(f);
@@ -31674,7 +31672,16 @@ var formatComment = (head, bases, {
     }).filter(
       ({ delta }) => delta !== 0 && Math.abs(delta) >= minimumChangeThreshold
     ).sort((a, z) => Math.abs(z.delta) - Math.abs(a.delta));
-    return { changed, unchangedCount: all.length - changed.length };
+    return { changed, fileCount: all.length };
+  };
+  const fileDiff = (h, b) => {
+    const br = baseRowFor(b, h.name);
+    if (h.error || !br || br.error) return null;
+    const { changed, fileCount } = diffMaps(
+      filesOf(h.requestLog),
+      filesOf(br.requestLog)
+    );
+    return { changed, unchangedCount: fileCount - changed.length };
   };
   const fileTable = (b, changed) => {
     const fileRows = changed.map(({ f, hb, bb }) => {
@@ -31757,6 +31764,56 @@ ${entries.join("\n\n")}
 <sub>runs varied by up to ${formatBytes(maxSpread)} (h2 header-compression noise, within the ${formatBytes(spreadToleranceBytes)} tolerance) - the minimum is reported</sub>` : "";
   const comparedNote = bases.length === 0 ? "\n<sub>no base ref to compare against - showing head only</sub>" : "";
   const detailsBlocks = bases.map(breakdownFor).join("");
+  const diskFilesOf = (disk) => {
+    const m = /* @__PURE__ */ new Map();
+    for (const [path, bytes] of Object.entries(disk?.files ?? {})) {
+      const f = stripRe ? path.replace(stripRe, ".") : path;
+      m.set(f, (m.get(f) ?? 0) + bytes);
+    }
+    return m;
+  };
+  const diskBreakdownFor = (b) => {
+    if (!headDisk || !b.disk) return "";
+    const { changed, fileCount } = diffMaps(
+      diskFilesOf(headDisk),
+      diskFilesOf(b.disk)
+    );
+    const heading = `
+#### ${baseHeader(b)}
+
+`;
+    if (changed.length === 0) {
+      return `${heading}no per-file changes (${fileCount} files identical)
+`;
+    }
+    const summary = `${changed.length} file(s) changed, ${fileCount - changed.length} identical`;
+    const table = fileTable(b, changed);
+    return collapsibleBreakdown ? `${heading}<details><summary>${summary}</summary>
+
+${table}
+</details>
+` : `${heading}${summary}
+
+${table}
+`;
+  };
+  const diskHeader = ["", "PR", ...bases.map(baseHeader)];
+  const diskTotalRow = headDisk ? `| ${[
+    "**on disk**",
+    `**${formatBytes(headDisk.total)}**`,
+    ...bases.map(
+      (b) => b.disk ? `${formatDelta(headDisk.total, b.disk.total, minimumChangeThreshold)} \u2192 ${formatBytes(b.disk.total)}` : "\u2014"
+    )
+  ].join(" | ")} |` : "";
+  const diskSection = measureDisk && headDisk ? `
+### \u{1F4BE} total built size on disk${commentKey ? ` (${commentKey})` : ""}
+
+Every file in the built site, loaded or not, compressed as served.
+
+| ${diskHeader.join(" | ")} |
+| ${diskHeader.map(() => "---").join(" | ")} |
+${diskTotalRow}
+${bases.length === 0 ? "<sub>no base ref to compare against - showing head only</sub>\n" : ""}${bases.map(diskBreakdownFor).join("")}` : "";
   return `${markerFor(commentKey)}
 ### \u{1F4E1} real network cost to ready${commentKey ? ` (${commentKey})` : ""}
 
@@ -31768,6 +31825,7 @@ ${rows.join("\n")}
 ${totalRow}
 ${spreadNote}${ignoredNote}${baseErrorNotes}${duplicateNotes}${comparedNote}
 ${detailsBlocks}
+${diskSection}
 ${runUrl ? `
 <sub>\u{1F4CB} per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
 <sub>measured by [true-site-size](https://github.com/jimhigson/true-site-size)</sub>
@@ -31810,11 +31868,11 @@ import { spawn } from "node:child_process";
 import { createHash, createPublicKey } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createSecureServer } from "node:http2";
-import { extname, join, normalize } from "node:path";
+import { extname, join, normalize, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 import * as zlib from "node:zlib";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 var certDir = fileURLToPath(new URL("./cert/", import.meta.url));
 var certSpkiHash = createHash("sha256").update(
   createPublicKey(
@@ -31892,6 +31950,31 @@ var compressible = /* @__PURE__ */ new Set([
   "image/svg+xml",
   "application/manifest+json"
 ]);
+var transferSize = (file, compression, level) => {
+  const type = mimeTypes[extname(file)] ?? "application/octet-stream";
+  if (compression !== "none" && compressible.has(type)) {
+    return compress(readFileSync(file), compression, level).length;
+  }
+  return statSync(file).size;
+};
+var diskSizes = (dir, compression, level = null) => {
+  const files = {};
+  let total = 0;
+  const walk = (cur) => {
+    for (const entry of readdirSync(cur, { withFileTypes: true })) {
+      const full = join(cur, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile()) {
+        const size = transferSize(full, compression, level);
+        files[relative(dir, full).split(sep).join("/")] = size;
+        total += size;
+      }
+    }
+  };
+  walk(dir);
+  return { total, files };
+};
 var serve = (dir, compression, level = null) => new Promise((resolve2) => {
   let encodingSeen = false;
   let acceptEncodingSample = null;
@@ -32390,6 +32473,7 @@ var buildAndMeasure = async (checkoutDir, config) => {
   if (!existsSync3(serveDir)) {
     throw new Error(`serve-dir does not exist after build: ${serveDir}`);
   }
+  const disk = config.measureDisk ? diskSizes(serveDir, config.compression, config.compressionLevel) : null;
   const server = await serve(serveDir, config.compression, config.compressionLevel);
   try {
     const steps = config.steps.map(
@@ -32397,7 +32481,7 @@ var buildAndMeasure = async (checkoutDir, config) => {
     );
     const results = await measure(steps, config);
     server.assertBrowserDecodes();
-    return results;
+    return { results, disk };
   } finally {
     await server.close();
   }
@@ -32443,6 +32527,9 @@ var main = async () => {
     // collapse the per-file breakdown into expandable <details> (true) or show
     // it inline (false); unchanged rows are always a plain line either way
     collapsibleBreakdown: input("collapse-breakdown", "true") === "true",
+    // also report the total built size on disk (every file, compressed as
+    // served). Off skips compressing the whole site - cheaper on large builds
+    measureDisk: input("measure-disk", "true") === "true",
     token: input("github-token", process.env.GITHUB_TOKEN ?? "")
   };
   if (config.steps.length === 0) {
@@ -32482,8 +32569,13 @@ var main = async () => {
     }
   };
   console.log("[true-site-size] measuring head...");
-  const head = await buildAndMeasure(workspace, config);
+  const { results: head, disk: headDisk } = await buildAndMeasure(workspace, config);
   logBreakdown("head", head);
+  if (headDisk) {
+    console.log(
+      `[true-site-size] head total built size on disk: ${formatBytes(headDisk.total)} over ${Object.keys(headDisk.files).length} files`
+    );
+  }
   const eventPath = process.env.GITHUB_EVENT_PATH;
   const event = eventPath && existsSync3(eventPath) ? JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(eventPath, "utf8"))) : {};
   const prBase = event.pull_request?.base?.ref;
@@ -32499,7 +32591,10 @@ var main = async () => {
       settleMs: config.settleMs,
       ignorePatterns: config.ignorePatterns,
       serveDir: config.serveDir,
-      buildCommand: config.buildCommand
+      buildCommand: config.buildCommand,
+      // part of what's measured, and bumping it re-keys the cache so the
+      // pre-disk array-shaped entries are never read back
+      measureDisk: config.measureDisk
     })
   ).digest("hex").slice(0, 16);
   const cacheDir = process.env.TRUE_SITE_SIZE_CACHE_DIR ?? (process.env.GITHUB_ACTIONS ? join3(homedir(), ".true-site-size-cache") : null);
@@ -32519,6 +32614,7 @@ var main = async () => {
       console.warn(`[true-site-size] could not fetch base ref "${ref}"`);
       base.error = `could not fetch ref "${ref}" - does it exist on origin?`;
       base.results = null;
+      base.disk = null;
       return base;
     }
     try {
@@ -32529,8 +32625,10 @@ var main = async () => {
     }
     base.url = serverUrl && repo ? `${serverUrl}/${repo}/commit/${base.sha}` : null;
     const cacheFile = cacheDir ? join3(cacheDir, `base-${base.sha}-${configHash}.json`) : null;
-    if (cacheFile && existsSync3(cacheFile)) {
-      base.results = JSON.parse(readFileSync2(cacheFile, "utf8"));
+    const cached = cacheFile && existsSync3(cacheFile) ? JSON.parse(readFileSync2(cacheFile, "utf8")) : null;
+    if (cached && !Array.isArray(cached)) {
+      base.results = cached.results;
+      base.disk = cached.disk ?? null;
       console.log(
         `[true-site-size] base (${ref} @ ${base.sha.slice(0, 9)}) loaded from cache - skipping its build and measurement`
       );
@@ -32543,11 +32641,16 @@ var main = async () => {
     rmSync2(baseDir, { recursive: true, force: true });
     try {
       run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
-      base.results = await buildAndMeasure(baseDir, config);
+      const built = await buildAndMeasure(baseDir, config);
+      base.results = built.results;
+      base.disk = built.disk;
       logBreakdown(`base ${ref}`, base.results);
       if (cacheFile && base.results.every((r) => !r.error)) {
         mkdirSync(cacheDir, { recursive: true });
-        writeFileSync(cacheFile, JSON.stringify(base.results));
+        writeFileSync(
+          cacheFile,
+          JSON.stringify({ results: base.results, disk: base.disk })
+        );
         console.log("[true-site-size] base result cached for future runs");
       }
     } catch (e) {
@@ -32556,6 +32659,7 @@ var main = async () => {
       );
       base.error = e.message;
       base.results = null;
+      base.disk = null;
     } finally {
       try {
         run(`git worktree remove --force ${baseDir}`, workspace);
@@ -32575,7 +32679,9 @@ var main = async () => {
     stripHash: config.stripHash,
     spreadToleranceBytes: config.spreadToleranceBytes,
     minimumChangeThreshold: config.minimumChangeThreshold,
-    collapsibleBreakdown: config.collapsibleBreakdown
+    collapsibleBreakdown: config.collapsibleBreakdown,
+    headDisk,
+    measureDisk: config.measureDisk
   });
   console.log(body);
   const issueNumber = event.pull_request?.number;

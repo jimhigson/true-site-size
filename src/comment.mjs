@@ -46,6 +46,8 @@ export const formatComment = (
     spreadToleranceBytes = 0,
     minimumChangeThreshold = 1,
     collapsibleBreakdown = true,
+    headDisk = null,
+    measureDisk = true,
   },
 ) => {
   const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
@@ -75,13 +77,11 @@ export const formatComment = (
     return `${d > 0 ? "📈 +" : "📉 -"}${formatBytes(Math.abs(d))}`;
   };
 
-  /** per-file diff of a head row vs a base ref: { changed, unchangedCount },
-   *  or null when the row or base could not be measured */
-  const fileDiff = (h, b) => {
-    const br = baseRowFor(b, h.name);
-    if (h.error || !br || br.error) return null;
-    const headFiles = filesOf(h.requestLog);
-    const baseFiles = filesOf(br.requestLog);
+  /**
+   * diff two file→bytes maps: { changed: the files whose bytes moved by at
+   * least the threshold, biggest first; fileCount: size of their union }
+   */
+  const diffMaps = (headFiles, baseFiles) => {
     const all = [...new Set([...headFiles.keys(), ...baseFiles.keys()])];
     const changed = all
       .map((f) => {
@@ -93,7 +93,19 @@ export const formatComment = (
         ({ delta }) => delta !== 0 && Math.abs(delta) >= minimumChangeThreshold,
       )
       .sort((a, z) => Math.abs(z.delta) - Math.abs(a.delta));
-    return { changed, unchangedCount: all.length - changed.length };
+    return { changed, fileCount: all.length };
+  };
+
+  /** per-file diff of a head row vs a base ref: { changed, unchangedCount },
+   *  or null when the row or base could not be measured */
+  const fileDiff = (h, b) => {
+    const br = baseRowFor(b, h.name);
+    if (h.error || !br || br.error) return null;
+    const { changed, fileCount } = diffMaps(
+      filesOf(h.requestLog),
+      filesOf(br.requestLog),
+    );
+    return { changed, unchangedCount: fileCount - changed.length };
   };
 
   /** the markdown table of a row's changed files vs a base ref */
@@ -228,6 +240,59 @@ export const formatComment = (
   // per-file breakdown grouped under a heading per base ref
   const detailsBlocks = bases.map(breakdownFor).join("");
 
+  // ── total built size on disk: every file in serve-dir, loaded or not,
+  // compressed as served. headDisk / base.disk are { total, files } or null.
+  /** a disk { files } as a hash-stripped path→bytes map (matches across builds) */
+  const diskFilesOf = (disk) => {
+    const m = new Map();
+    for (const [path, bytes] of Object.entries(disk?.files ?? {})) {
+      const f = stripRe ? path.replace(stripRe, ".") : path;
+      m.set(f, (m.get(f) ?? 0) + bytes);
+    }
+    return m;
+  };
+  /** changed-files breakdown of the whole serve-dir vs one base ref */
+  const diskBreakdownFor = (b) => {
+    if (!headDisk || !b.disk) return "";
+    const { changed, fileCount } = diffMaps(
+      diskFilesOf(headDisk),
+      diskFilesOf(b.disk),
+    );
+    const heading = `\n#### ${baseHeader(b)}\n\n`;
+    if (changed.length === 0) {
+      return `${heading}no per-file changes (${fileCount} files identical)\n`;
+    }
+    const summary = `${changed.length} file(s) changed, ${fileCount - changed.length} identical`;
+    const table = fileTable(b, changed);
+    return collapsibleBreakdown ?
+        `${heading}<details><summary>${summary}</summary>\n\n${table}\n</details>\n`
+      : `${heading}${summary}\n\n${table}\n`;
+  };
+  const diskHeader = ["", "PR", ...bases.map(baseHeader)];
+  const diskTotalRow =
+    headDisk ?
+      `| ${[
+        "**on disk**",
+        `**${formatBytes(headDisk.total)}**`,
+        ...bases.map((b) =>
+          b.disk ?
+            `${formatDelta(headDisk.total, b.disk.total, minimumChangeThreshold)} → ${formatBytes(b.disk.total)}`
+          : "—",
+        ),
+      ].join(" | ")} |`
+    : "";
+  const diskSection =
+    measureDisk && headDisk ?
+      `\n### 💾 total built size on disk${commentKey ? ` (${commentKey})` : ""}
+
+Every file in the built site, loaded or not, compressed as served.
+
+| ${diskHeader.join(" | ")} |
+| ${diskHeader.map(() => "---").join(" | ")} |
+${diskTotalRow}
+${bases.length === 0 ? "<sub>no base ref to compare against - showing head only</sub>\n" : ""}${bases.map(diskBreakdownFor).join("")}`
+    : "";
+
   return `${markerFor(commentKey)}
 ### 📡 real network cost to ready${commentKey ? ` (${commentKey})` : ""}
 
@@ -239,6 +304,7 @@ ${rows.join("\n")}
 ${totalRow}
 ${spreadNote}${ignoredNote}${baseErrorNotes}${duplicateNotes}${comparedNote}
 ${detailsBlocks}
+${diskSection}
 ${runUrl ? `\n<sub>📋 per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
 <sub>measured by [true-site-size](https://github.com/jimhigson/true-site-size)</sub>
 `;

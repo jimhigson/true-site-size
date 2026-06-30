@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { formatComment, postComment } from "./comment.mjs";
 import { formatBytes, formatDuration } from "./formatBytes.mjs";
 import { measure } from "./measure.mjs";
-import { assertCompressionSupported, serve } from "./serve.mjs";
+import { assertCompressionSupported, diskSizes, serve } from "./serve.mjs";
 
 /**
  * read an action input (the INPUT_* convention used by github actions).
@@ -34,6 +34,12 @@ const buildAndMeasure = async (checkoutDir, config) => {
   if (!existsSync(serveDir)) {
     throw new Error(`serve-dir does not exist after build: ${serveDir}`);
   }
+  // the whole-site weight on disk (every file, loaded or not), compressed as
+  // served - the complement to the loaded-to-ready bytes the browser measures
+  const disk =
+    config.measureDisk ?
+      diskSizes(serveDir, config.compression, config.compressionLevel)
+    : null;
   const server = await serve(serveDir, config.compression, config.compressionLevel);
   try {
     const steps = config.steps.map((s) =>
@@ -45,7 +51,7 @@ const buildAndMeasure = async (checkoutDir, config) => {
     // the browser must actually be able to decode the requested compression;
     // otherwise it received the uncompressed fallback and the numbers are wrong
     server.assertBrowserDecodes();
-    return results;
+    return { results, disk };
   } finally {
     await server.close();
   }
@@ -94,6 +100,9 @@ const main = async () => {
     // collapse the per-file breakdown into expandable <details> (true) or show
     // it inline (false); unchanged rows are always a plain line either way
     collapsibleBreakdown: input("collapse-breakdown", "true") === "true",
+    // also report the total built size on disk (every file, compressed as
+    // served). Off skips compressing the whole site - cheaper on large builds
+    measureDisk: input("measure-disk", "true") === "true",
     token: input("github-token", process.env.GITHUB_TOKEN ?? ""),
   };
   if (config.steps.length === 0) {
@@ -143,8 +152,13 @@ const main = async () => {
   };
 
   console.log("[true-site-size] measuring head...");
-  const head = await buildAndMeasure(workspace, config);
+  const { results: head, disk: headDisk } = await buildAndMeasure(workspace, config);
   logBreakdown("head", head);
+  if (headDisk) {
+    console.log(
+      `[true-site-size] head total built size on disk: ${formatBytes(headDisk.total)} over ${Object.keys(headDisk.files).length} files`,
+    );
+  }
 
   // the github event payload supplies the PR's base ref (the default to
   // compare against) and its number (for commenting)
@@ -179,6 +193,9 @@ const main = async () => {
         ignorePatterns: config.ignorePatterns,
         serveDir: config.serveDir,
         buildCommand: config.buildCommand,
+        // part of what's measured, and bumping it re-keys the cache so the
+        // pre-disk array-shaped entries are never read back
+        measureDisk: config.measureDisk,
       }),
     )
     .digest("hex")
@@ -220,6 +237,7 @@ const main = async () => {
       console.warn(`[true-site-size] could not fetch base ref "${ref}"`);
       base.error = `could not fetch ref "${ref}" - does it exist on origin?`;
       base.results = null;
+      base.disk = null;
       return base;
     }
     try {
@@ -236,8 +254,15 @@ const main = async () => {
 
     const cacheFile =
       cacheDir ? join(cacheDir, `base-${base.sha}-${configHash}.json`) : null;
-    if (cacheFile && existsSync(cacheFile)) {
-      base.results = JSON.parse(readFileSync(cacheFile, "utf8"));
+    // the cache holds { results, disk }; a bare array is a pre-disk entry the
+    // configHash bump should already exclude, but tolerate it as a miss
+    const cached =
+      cacheFile && existsSync(cacheFile) ?
+        JSON.parse(readFileSync(cacheFile, "utf8"))
+      : null;
+    if (cached && !Array.isArray(cached)) {
+      base.results = cached.results;
+      base.disk = cached.disk ?? null;
       console.log(
         `[true-site-size] base (${ref} @ ${base.sha.slice(0, 9)}) loaded from cache - skipping its build and measurement`,
       );
@@ -251,13 +276,18 @@ const main = async () => {
     rmSync(baseDir, { recursive: true, force: true });
     try {
       run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
-      base.results = await buildAndMeasure(baseDir, config);
+      const built = await buildAndMeasure(baseDir, config);
+      base.results = built.results;
+      base.disk = built.disk;
       logBreakdown(`base ${ref}`, base.results);
       // only cache fully-successful measurements: an error row (eg a missing
       // mark, or a flaky run) must not persist for this sha
       if (cacheFile && base.results.every((r) => !r.error)) {
         mkdirSync(cacheDir, { recursive: true });
-        writeFileSync(cacheFile, JSON.stringify(base.results));
+        writeFileSync(
+          cacheFile,
+          JSON.stringify({ results: base.results, disk: base.disk }),
+        );
         console.log("[true-site-size] base result cached for future runs");
       }
     } catch (e) {
@@ -266,6 +296,7 @@ const main = async () => {
       );
       base.error = e.message;
       base.results = null;
+      base.disk = null;
     } finally {
       // remove the worktree if it was added; ignore if it never existed
       try {
@@ -293,6 +324,8 @@ const main = async () => {
     spreadToleranceBytes: config.spreadToleranceBytes,
     minimumChangeThreshold: config.minimumChangeThreshold,
     collapsibleBreakdown: config.collapsibleBreakdown,
+    headDisk,
+    measureDisk: config.measureDisk,
   });
   console.log(body);
 

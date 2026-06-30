@@ -104,6 +104,13 @@ inputs:
       (true) or show it inline (false). Rows with no changes are always a
       plain line, since there is nothing to reveal by expanding.
     default: "true"
+  measure-disk:
+    description: >
+      also report the total built size on disk - the compressed (as served,
+      matching `compression`) size of every file in serve-dir, loaded or not,
+      with its own changed-files breakdown. Catches shipped-but-unloaded dead
+      weight. Set false to skip compressing the whole site on large builds.
+    default: "true"
   comment-key:
     description: >
       distinguishes multiple uses on one PR - each key maintains its own
@@ -162,6 +169,7 @@ runs:
         INPUT_BASE_REFS: ${{ inputs.base-refs }}
         INPUT_COMMENT: ${{ inputs.comment }}
         INPUT_COLLAPSE_BREAKDOWN: ${{ inputs.collapse-breakdown }}
+        INPUT_MEASURE_DISK: ${{ inputs.measure-disk }}
         INPUT_COMMENT_KEY: ${{ inputs.comment-key }}
         INPUT_STRIP_HASH: ${{ inputs.strip-hash }}
         INPUT_SPREAD_TOLERANCE_BYTES: ${{ inputs.spread-tolerance-bytes }}
