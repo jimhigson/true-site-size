@@ -31619,20 +31619,13 @@ var formatDuration = (ms) => {
 
 // src/comment.mjs
 var markerFor = (commentKey) => `<!-- true-site-size${commentKey ? `:${commentKey}` : ""} -->`;
-var formatDelta = (head, base, minimumChangeThreshold) => {
-  if (head == null || base == null) return "\u2014";
-  const d = head - base;
-  if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "\u{1F7F0}";
-  const pct = base === 0 ? 0 : Math.abs(d / base * 100);
-  const arrow = d > 0 ? "\u{1F4C8}" : "\u{1F4C9}";
-  const sign = d > 0 ? "+" : "-";
-  return `${arrow} ${sign}${formatBytes(Math.abs(d))} (${sign}${pct.toFixed(1)}%)`;
-};
 var baseHeader = (b) => {
   const name = b.url ? `[${b.ref}](${b.url})` : `\`${b.ref}\``;
   const desc = b.describe && b.describe !== b.ref ? ` \xB7 ${b.describe}` : "";
   return `vs ${name}${desc}`;
 };
+var markColours = ["\u{1F7E3}", "\u{1F7E2}", "\u{1F7E0}", "\u{1F535}", "\u{1F534}", "\u{1F7E1}", "\u{1F7E4}", "\u26AB", "\u26AA"];
+var markColour = (i) => markColours[i % markColours.length];
 var formatComment = (head, bases, {
   runUrl,
   commentKey,
@@ -31672,15 +31665,22 @@ var formatComment = (head, bases, {
     return "";
   };
   const deltaCell = (h, base) => {
-    const from = `from ${formatBytes(base)}`;
+    const was = `was ${formatBytes(base)}`;
     const d = h - base;
-    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return `\u{1F7F0}<br>${from}`;
+    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return `\u{1F7F0}<br>${was}`;
     const pct = base === 0 ? 0 : Math.abs(d / base * 100);
     const sign = d > 0 ? "+" : "-";
     const icon = severityIcon(d, base);
     const deltaLine = `${icon ? `${icon} ` : ""}${sign}${formatBytes(Math.abs(d))}`;
     const chart = d > 0 ? "\u{1F4C8}" : "\u{1F4C9}";
-    return `${deltaLine}<br>${chart} ${sign}${pct.toFixed(1)}%<br>${from}`;
+    return `${deltaLine}<br>${chart} ${sign}${pct.toFixed(1)}%<br>${was}`;
+  };
+  const severityDelta = (h, base) => {
+    const d = h - base;
+    const icon = severityIcon(d, base);
+    const sign = d > 0 ? "+" : "-";
+    const pct = base === 0 ? 0 : Math.abs(d / base * 100);
+    return `${icon ? `${icon} ` : ""}${sign}${formatBytes(Math.abs(d))} (${sign}${pct.toFixed(1)}%)`;
   };
   const diffMaps = (headFiles, baseFiles) => {
     const all = [.../* @__PURE__ */ new Set([...headFiles.keys(), ...baseFiles.keys()])];
@@ -31704,9 +31704,9 @@ var formatComment = (head, bases, {
   };
   const fileTable = (b, changed) => {
     const fileRows = changed.map(({ f, hb, bb }) => {
-      const deltaCell2 = bb === void 0 ? `\u{1F4C8} +${formatBytes(hb)}` : hb === void 0 ? `\u{1F4C9} -${formatBytes(bb)}` : formatDelta(hb, bb, minimumChangeThreshold);
+      const deltaTxt = bb === void 0 ? `+${formatBytes(hb)}` : hb === void 0 ? `-${formatBytes(bb)}` : severityDelta(hb, bb);
       const note = bb === void 0 ? " \u{1F195}" : hb === void 0 ? " \u{1F5D1}\uFE0F" : "";
-      return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaCell2} |`;
+      return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaTxt} |`;
     });
     return `| file | PR | ${b.ref} | delta |
 | --- | --- | --- | --- |
@@ -31714,13 +31714,14 @@ ${fileRows.join("\n")}`;
   };
   const breakdownFor = (b) => {
     if (!b.results) return "";
-    const entries = head.map((h) => {
+    const entries = head.map((h, i) => {
       const diff = fileDiff(h, b);
       if (!diff) return null;
+      const label = `${markColour(i)} ${h.name}`;
       if (diff.changed.length === 0) {
-        return `${h.name}: no per-file changes (${diff.unchangedCount} files identical)`;
+        return `${label}: no per-file changes (${diff.unchangedCount} files identical)`;
       }
-      const summary = `${h.name}: ${diff.changed.length} file(s) changed, ${diff.unchangedCount} identical`;
+      const summary = `${label}: ${diff.changed.length} file(s) changed, ${diff.unchangedCount} identical`;
       const table = fileTable(b, diff.changed);
       return collapsibleBreakdown ? `<details><summary>${summary}</summary>
 
@@ -31737,7 +31738,7 @@ ${entries.join("\n\n")}
   };
   const headerCells = ["", "PR", ...bases.map(baseHeader)];
   const sepCells = headerCells.map(() => "---");
-  const rows = head.map((h) => {
+  const rows = head.map((h, i) => {
     const prCell = h.error ? `\u26A0\uFE0F unable to measure - ${h.error}` : formatBytes(h.bytes);
     const baseCells = bases.map((b) => {
       if (h.error) return "\u2014";
@@ -31745,7 +31746,7 @@ ${entries.join("\n\n")}
       if (!br || br.error) return "\u2014";
       return deltaCell(h.bytes, br.bytes);
     });
-    return `| ${[h.name, prCell, ...baseCells].join(" | ")} |`;
+    return `| ${[`${markColour(i)} ${h.name}`, prCell, ...baseCells].join(" | ")} |`;
   });
   const totalHead = head.every((h) => !h.error) ? head.reduce((a, h) => a + h.bytes, 0) : null;
   const totalRow = totalHead != null && head.length > 1 ? `| ${[

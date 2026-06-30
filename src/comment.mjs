@@ -7,21 +7,6 @@ import { formatBytes } from "./formatBytes.mjs";
 const markerFor = (commentKey) =>
   `<!-- true-site-size${commentKey ? `:${commentKey}` : ""} -->`;
 
-const formatDelta = (
-  head,
-  base,
-  /** changes smaller than this many bytes display as no-change */
-  minimumChangeThreshold,
-) => {
-  if (head == null || base == null) return "—";
-  const d = head - base;
-  if (d === 0 || Math.abs(d) < minimumChangeThreshold) return "🟰";
-  const pct = base === 0 ? 0 : Math.abs((d / base) * 100);
-  const arrow = d > 0 ? "📈" : "📉";
-  const sign = d > 0 ? "+" : "-";
-  return `${arrow} ${sign}${formatBytes(Math.abs(d))} (${sign}${pct.toFixed(1)}%)`;
-};
-
 /**
  * column header for one base ref: the ref linked to the exact commit measured,
  * annotated with `git describe` when it names something other than the ref
@@ -32,6 +17,14 @@ const baseHeader = (b) => {
   const desc = b.describe && b.describe !== b.ref ? ` · ${b.describe}` : "";
   return `vs ${name}${desc}`;
 };
+
+/**
+ * a colour per mark (journey row), shown as a circle next to its name wherever
+ * it's referenced so a row is easy to follow across the table and breakdowns.
+ * Assigned by row order; cycles once the palette is exhausted.
+ */
+const markColours = ["🟣", "🟢", "🟠", "🔵", "🔴", "🟡", "🟤", "⚫", "⚪"];
+const markColour = (i) => markColours[i % markColours.length];
 
 /** build the markdown body for the PR comment */
 export const formatComment = (
@@ -98,15 +91,25 @@ export const formatComment = (
    * drop the % line.
    */
   const deltaCell = (h, base) => {
-    const from = `from ${formatBytes(base)}`;
+    const was = `was ${formatBytes(base)}`;
     const d = h - base;
-    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return `🟰<br>${from}`;
+    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return `🟰<br>${was}`;
     const pct = base === 0 ? 0 : Math.abs((d / base) * 100);
     const sign = d > 0 ? "+" : "-";
     const icon = severityIcon(d, base);
     const deltaLine = `${icon ? `${icon} ` : ""}${sign}${formatBytes(Math.abs(d))}`;
     const chart = d > 0 ? "📈" : "📉";
-    return `${deltaLine}<br>${chart} ${sign}${pct.toFixed(1)}%<br>${from}`;
+    return `${deltaLine}<br>${chart} ${sign}${pct.toFixed(1)}%<br>${was}`;
+  };
+
+  /** inline delta text for the per-file tables: severity icon + signed bytes
+   *  + relative %, matching the summary cells' emoji scheme */
+  const severityDelta = (h, base) => {
+    const d = h - base;
+    const icon = severityIcon(d, base);
+    const sign = d > 0 ? "+" : "-";
+    const pct = base === 0 ? 0 : Math.abs((d / base) * 100);
+    return `${icon ? `${icon} ` : ""}${sign}${formatBytes(Math.abs(d))} (${sign}${pct.toFixed(1)}%)`;
   };
 
   /**
@@ -143,15 +146,15 @@ export const formatComment = (
   /** the markdown table of a row's changed files vs a base ref */
   const fileTable = (b, changed) => {
     const fileRows = changed.map(({ f, hb, bb }) => {
-      const deltaCell =
-        bb === undefined ? `📈 +${formatBytes(hb)}`
-        : hb === undefined ? `📉 -${formatBytes(bb)}`
-        : formatDelta(hb, bb, minimumChangeThreshold);
+      const deltaTxt =
+        bb === undefined ? `+${formatBytes(hb)}`
+        : hb === undefined ? `-${formatBytes(bb)}`
+        : severityDelta(hb, bb);
       const note =
         bb === undefined ? " 🆕"
         : hb === undefined ? " 🗑️"
         : "";
-      return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaCell} |`;
+      return `| \`${f}\`${note} | ${formatBytes(hb)} | ${formatBytes(bb)} | ${deltaTxt} |`;
     });
     return `| file | PR | ${b.ref} | delta |\n| --- | --- | --- | --- |\n${fileRows.join("\n")}`;
   };
@@ -165,13 +168,14 @@ export const formatComment = (
   const breakdownFor = (b) => {
     if (!b.results) return "";
     const entries = head
-      .map((h) => {
+      .map((h, i) => {
         const diff = fileDiff(h, b);
         if (!diff) return null;
+        const label = `${markColour(i)} ${h.name}`;
         if (diff.changed.length === 0) {
-          return `${h.name}: no per-file changes (${diff.unchangedCount} files identical)`;
+          return `${label}: no per-file changes (${diff.unchangedCount} files identical)`;
         }
-        const summary = `${h.name}: ${diff.changed.length} file(s) changed, ${diff.unchangedCount} identical`;
+        const summary = `${label}: ${diff.changed.length} file(s) changed, ${diff.unchangedCount} identical`;
         const table = fileTable(b, diff.changed);
         return collapsibleBreakdown ?
             `<details><summary>${summary}</summary>\n\n${table}\n</details>`
@@ -188,7 +192,7 @@ export const formatComment = (
   const headerCells = ["", "PR", ...bases.map(baseHeader)];
   const sepCells = headerCells.map(() => "---");
 
-  const rows = head.map((h) => {
+  const rows = head.map((h, i) => {
     const prCell =
       h.error ? `⚠️ unable to measure - ${h.error}` : formatBytes(h.bytes);
     const baseCells = bases.map((b) => {
@@ -197,7 +201,7 @@ export const formatComment = (
       if (!br || br.error) return "—";
       return deltaCell(h.bytes, br.bytes);
     });
-    return `| ${[h.name, prCell, ...baseCells].join(" | ")} |`;
+    return `| ${[`${markColour(i)} ${h.name}`, prCell, ...baseCells].join(" | ")} |`;
   });
 
   const totalHead =

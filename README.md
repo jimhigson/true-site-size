@@ -108,8 +108,10 @@ for anything exotic.
 
 ## What the comment shows
 
-- a row per journey segment: wire bytes for the PR, then a column per base
-  ref showing the delta (with a severity emoji graded by the % change, à la
+- a row per journey segment, each given a colour circle (🟣🟢🟠🔵🔴…) shown
+  wherever the segment is named so it's easy to follow across the table and
+  breakdowns: wire bytes for the PR, then a column per base ref showing the
+  delta (with a severity emoji graded by the % change, à la
   [compressed-size-action](https://github.com/preactjs/compressed-size-action)),
   the relative % (📈 up / 📉 down), and the base's own bytes — stacked on their
   own lines — and (when there's more than one row) a total in the same shape.
