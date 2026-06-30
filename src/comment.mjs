@@ -71,10 +71,31 @@ export const formatComment = (
   const baseRowFor = (b, name) => b.results?.find((r) => r.name === name);
 
   /**
-   * a summary-table cell, stacked so each part reads on its own line: the
-   * delta, the relative %, then the base ("from") value. Markdown table cells
-   * take <br> for line breaks (a literal newline would break the row), so the
-   * lines are joined with <br>. Unchanged cells drop the % line (no change).
+   * severity emoji for a size change, graded by the % - copied verbatim from
+   * preactjs/compressed-size-action's iconForDifference. Increases warn
+   * (🔍 ⚠️ 🚨 🆘), decreases celebrate (✅ 👏 🎉 🏆), and a change within ±5%
+   * gets none.
+   */
+  const severityIcon = (delta, base) => {
+    if (base === 0) return "🆕";
+    const pct = Math.round((delta / base) * 100);
+    if (pct >= 50) return "🆘";
+    if (pct >= 20) return "🚨";
+    if (pct >= 10) return "⚠️";
+    if (pct >= 5) return "🔍";
+    if (pct <= -50) return "🏆";
+    if (pct <= -20) return "🎉";
+    if (pct <= -10) return "👏";
+    if (pct <= -5) return "✅";
+    return "";
+  };
+
+  /**
+   * a summary-table cell, stacked so each part reads on its own line: the delta
+   * (with compressed-size-action's severity emoji), the relative % (with the
+   * 📈/📉 trend emoji), then the base ("from") value. Markdown cells take <br>
+   * for line breaks (a literal newline would break the row). Unchanged cells
+   * drop the % line.
    */
   const deltaCell = (h, base) => {
     const from = `from ${formatBytes(base)}`;
@@ -82,8 +103,10 @@ export const formatComment = (
     if (d === 0 || Math.abs(d) < minimumChangeThreshold) return `🟰<br>${from}`;
     const pct = base === 0 ? 0 : Math.abs((d / base) * 100);
     const sign = d > 0 ? "+" : "-";
-    const emoji = d > 0 ? "📈" : "📉";
-    return `${emoji} ${sign}${formatBytes(Math.abs(d))}<br>${sign}${pct.toFixed(1)}%<br>${from}`;
+    const icon = severityIcon(d, base);
+    const deltaLine = `${icon ? `${icon} ` : ""}${sign}${formatBytes(Math.abs(d))}`;
+    const chart = d > 0 ? "📈" : "📉";
+    return `${deltaLine}<br>${chart} ${sign}${pct.toFixed(1)}%<br>${from}`;
   };
 
   /**

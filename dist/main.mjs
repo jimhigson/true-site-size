@@ -31658,14 +31658,29 @@ var formatComment = (head, bases, {
     return m;
   };
   const baseRowFor = (b, name) => b.results?.find((r) => r.name === name);
+  const severityIcon = (delta, base) => {
+    if (base === 0) return "\u{1F195}";
+    const pct = Math.round(delta / base * 100);
+    if (pct >= 50) return "\u{1F198}";
+    if (pct >= 20) return "\u{1F6A8}";
+    if (pct >= 10) return "\u26A0\uFE0F";
+    if (pct >= 5) return "\u{1F50D}";
+    if (pct <= -50) return "\u{1F3C6}";
+    if (pct <= -20) return "\u{1F389}";
+    if (pct <= -10) return "\u{1F44F}";
+    if (pct <= -5) return "\u2705";
+    return "";
+  };
   const deltaCell = (h, base) => {
     const from = `from ${formatBytes(base)}`;
     const d = h - base;
     if (d === 0 || Math.abs(d) < minimumChangeThreshold) return `\u{1F7F0}<br>${from}`;
     const pct = base === 0 ? 0 : Math.abs(d / base * 100);
     const sign = d > 0 ? "+" : "-";
-    const emoji = d > 0 ? "\u{1F4C8}" : "\u{1F4C9}";
-    return `${emoji} ${sign}${formatBytes(Math.abs(d))}<br>${sign}${pct.toFixed(1)}%<br>${from}`;
+    const icon = severityIcon(d, base);
+    const deltaLine = `${icon ? `${icon} ` : ""}${sign}${formatBytes(Math.abs(d))}`;
+    const chart = d > 0 ? "\u{1F4C8}" : "\u{1F4C9}";
+    return `${deltaLine}<br>${chart} ${sign}${pct.toFixed(1)}%<br>${from}`;
   };
   const diffMaps = (headFiles, baseFiles) => {
     const all = [.../* @__PURE__ */ new Set([...headFiles.keys(), ...baseFiles.keys()])];
