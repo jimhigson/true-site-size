@@ -31724,7 +31724,7 @@ ${entries.join("\n\n")}
       if (h.error) return "\u2014";
       const br = baseRowFor(b, h.name);
       if (!br || br.error) return "\u2014";
-      return `${deltaShort(h.bytes, br.bytes)} \u2192 ${formatBytes(br.bytes)}`;
+      return `${deltaShort(h.bytes, br.bytes)} from ${formatBytes(br.bytes)}`;
     });
     return `| ${[h.name, prCell, ...baseCells].join(" | ")} |`;
   });
@@ -31736,7 +31736,7 @@ ${entries.join("\n\n")}
       const ok = b.results && b.results.every((r) => !r.error);
       if (!ok) return "\u2014";
       const totalBase = b.results.reduce((a, r) => a + r.bytes, 0);
-      return `${deltaShort(totalHead, totalBase)} \u2192 ${formatBytes(totalBase)}`;
+      return `${deltaShort(totalHead, totalBase)} from ${formatBytes(totalBase)}`;
     })
   ].join(" | ")} |` : "";
   const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);
@@ -31802,7 +31802,7 @@ ${table}
     "**on disk**",
     `**${formatBytes(headDisk.total)}**`,
     ...bases.map(
-      (b) => b.disk ? `${formatDelta(headDisk.total, b.disk.total, minimumChangeThreshold)} \u2192 ${formatBytes(b.disk.total)}` : "\u2014"
+      (b) => b.disk ? `${formatDelta(headDisk.total, b.disk.total, minimumChangeThreshold)} from ${formatBytes(b.disk.total)}` : "\u2014"
     )
   ].join(" | ")} |` : "";
   const diskSection = measureDisk && headDisk ? `

@@ -163,7 +163,7 @@ export const formatComment = (
       if (h.error) return "—";
       const br = baseRowFor(b, h.name);
       if (!br || br.error) return "—";
-      return `${deltaShort(h.bytes, br.bytes)} → ${formatBytes(br.bytes)}`;
+      return `${deltaShort(h.bytes, br.bytes)} from ${formatBytes(br.bytes)}`;
     });
     return `| ${[h.name, prCell, ...baseCells].join(" | ")} |`;
   });
@@ -183,7 +183,7 @@ export const formatComment = (
           const ok = b.results && b.results.every((r) => !r.error);
           if (!ok) return "—";
           const totalBase = b.results.reduce((a, r) => a + r.bytes, 0);
-          return `${deltaShort(totalHead, totalBase)} → ${formatBytes(totalBase)}`;
+          return `${deltaShort(totalHead, totalBase)} from ${formatBytes(totalBase)}`;
         }),
       ].join(" | ")} |`
     : "";
@@ -276,7 +276,7 @@ export const formatComment = (
         `**${formatBytes(headDisk.total)}**`,
         ...bases.map((b) =>
           b.disk ?
-            `${formatDelta(headDisk.total, b.disk.total, minimumChangeThreshold)} → ${formatBytes(b.disk.total)}`
+            `${formatDelta(headDisk.total, b.disk.total, minimumChangeThreshold)} from ${formatBytes(b.disk.total)}`
           : "—",
         ),
       ].join(" | ")} |`
