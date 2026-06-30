@@ -23,7 +23,7 @@ const baseHeader = (b) => {
  * it's referenced so a row is easy to follow across the table and breakdowns.
  * Assigned by row order; cycles once the palette is exhausted.
  */
-const markColours = ["🟣", "🟢", "🟠", "🔵", "🔴", "🟡", "🟤", "⚫", "⚪"];
+const markColours = ["🟣", "🟠", "🔵", "🟡", "🟢", "🔴", "🟤", "⚫", "⚪"];
 const markColour = (i) => markColours[i % markColours.length];
 
 /** build the markdown body for the PR comment */

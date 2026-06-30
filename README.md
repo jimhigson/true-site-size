@@ -108,7 +108,7 @@ for anything exotic.
 
 ## What the comment shows
 
-- a row per journey segment, each given a colour circle (🟣🟢🟠🔵🔴…) shown
+- a row per journey segment, each given a colour circle (🟣🟠🔵🟡🟢🔴…) shown
   wherever the segment is named so it's easy to follow across the table and
   breakdowns: wire bytes for the PR, then a column per base ref showing the
   delta (with a severity emoji graded by the % change, à la
