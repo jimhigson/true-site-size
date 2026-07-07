@@ -32597,6 +32597,9 @@ var main = async () => {
       allowEmpty: true
     }),
     comment: input("comment", "true") === "true",
+    // PR to comment on; empty falls back to the triggering event's PR (so a
+    // push-to-main run can target an open release PR)
+    prNumber: input("pr-number", ""),
     // collapse the per-file breakdown into expandable <details> (true) or show
     // it inline (false); unchanged rows are always a plain line either way
     collapsibleBreakdown: input("collapse-breakdown", "true") === "true",
@@ -32757,7 +32760,7 @@ var main = async () => {
     measureDisk: config.measureDisk
   });
   console.log(body);
-  const issueNumber = event.pull_request?.number;
+  const issueNumber = config.prNumber ? Number(config.prNumber) : event.pull_request?.number;
   if (config.comment && issueNumber && config.token) {
     await postComment(body, {
       token: config.token,

@@ -99,6 +99,12 @@ inputs:
   comment:
     description: post/update a PR comment with the results
     default: "true"
+  pr-number:
+    description: >
+      PR number to post the comment on. Defaults to the PR that triggered the
+      run; set it to comment from a non-PR event - eg a push to main updating
+      an open release PR's report so it reflects the just-merged code.
+    default: ""
   collapse-breakdown:
     description: >
       collapse each ref's per-file breakdown into an expandable <details>
@@ -169,6 +175,7 @@ runs:
         INPUT_MARK_TIMEOUT_MS: ${{ inputs.mark-timeout-ms }}
         INPUT_BASE_REFS: ${{ inputs.base-refs }}
         INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_PR_NUMBER: ${{ inputs.pr-number }}
         INPUT_COLLAPSE_BREAKDOWN: ${{ inputs.collapse-breakdown }}
         INPUT_MEASURE_DISK: ${{ inputs.measure-disk }}
         INPUT_COMMENT_KEY: ${{ inputs.comment-key }}

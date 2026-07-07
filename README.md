@@ -74,6 +74,59 @@ hardcoding it, resolve it in a prior step:
 Omitting `base-refs` falls back to the PR's base branch (a single column), so
 existing single-ref setups need nothing.
 
+## Keeping a long-lived PR's report fresh (eg a release PR)
+
+A `pull_request` run only re-measures when *that PR's own branch* is pushed — it
+does **not** re-fire when `main` advances underneath it. So a long-lived PR
+whose branch rarely moves goes stale: merge a size-cutting change to `main` and
+the open PR keeps showing the old numbers. A
+[release-please](https://github.com/googleapis/release-please) release PR is the
+classic case — it can lag several merges behind `main`, so its size report
+misrepresents what the release actually ships.
+
+Fix it by *also* measuring on push to `main` and pointing the comment at the
+open release PR with `pr-number`:
+
+```yaml
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main] # refresh the open release PR's report when main moves
+
+jobs:
+  size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ...install + build setup...
+
+      # on push to main, find the open release PR whose report to refresh
+      - id: release-pr
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=$(gh pr list --state open --json number,headRefName \
+                --jq 'map(select(.headRefName | startswith("release-please--")))[0].number')
+          echo "number=$n" >> "$GITHUB_OUTPUT"
+
+      - uses: jimhigson/true-site-size@main
+        with:
+          # a PR shows vs main and the last release; a push to main *is* main,
+          # so it only compares against the last release
+          base-refs: >-
+            ${{ github.event_name == 'push' && '["v1.4.0"]' || '["main", "v1.4.0"]' }}
+          # empty on a PR (comment lands on the event's PR); the release PR
+          # number on a push, so its report reflects the just-merged code
+          pr-number: ${{ steps.release-pr.outputs.number }}
+          scenarios: '[{ "name": "app", "url": "/", "mark": "app-ready" }]'
+```
+
+On push to `main`, `pr-number` targets the open release PR; on a normal PR it's
+empty, so the comment lands on the triggering PR as usual. An empty `pr-number`
+with no PR in the event simply skips commenting.
+
 ## Journeys: measuring interaction, not just navigation
 
 The `journey` input is the full step language; `scenarios` above is sugar for
@@ -241,6 +294,7 @@ Only fully-successful base measurements are cached.
 | `base-refs` | PR base | JSON array of refs to compare against, each its own column (linked + `git describe`'d), eg `["main", "v1.4.0"]`; empty uses the PR base branch |
 | `strip-hash` | vite-style | regex stripped from filenames for per-file matching; `""` disables |
 | `comment` | `true` | post/update the PR comment |
+| `pr-number` | event PR | PR number to comment on; set it to comment from a non-PR event (eg a push to main updating an open release PR) |
 | `collapse-breakdown` | `true` | collapse each ref's changed-file breakdown into an expandable `<details>`; `false` shows it inline |
 | `measure-disk` | `true` | also report total built size on disk (compressed as served, every file in serve-dir); `false` skips the cost on large sites |
 | `comment-key` | `""` | maintain separate comments per key |

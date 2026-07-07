@@ -132,6 +132,7 @@ export interface Config {
   minimumChangeThreshold: number;
   stripHash: string;
   comment: boolean;
+  prNumber: string;
   collapsibleBreakdown: boolean;
   measureDisk: boolean;
   token: string;
