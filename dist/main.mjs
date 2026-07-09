@@ -31668,7 +31668,9 @@ var formatComment = (head, bases, {
   const deltaCell = (h, base) => {
     const was = `was ${formatBytes(base)}`;
     const d = h - base;
-    if (d === 0 || Math.abs(d) < minimumChangeThreshold) return `\u{1F7F0}<br>${was}`;
+    if (d === 0 || Math.abs(d) < minimumChangeThreshold) {
+      return `\u{1F937} \xB10 B<br>\xB10.0%<br>${was}`;
+    }
     const pct = base === 0 ? 0 : Math.abs(d / base * 100);
     const sign = d > 0 ? "+" : "-";
     const icon = severityIcon(d, base);
