@@ -31764,7 +31764,7 @@ ${entries.join("\n\n")}
       return deltaCell(h.bytes, br.bytes);
     });
     const segmentRow = `| ${[`${markBadge(h, i)} ${h.name}`, prCell, ...baseCells].join(" | ")} |`;
-    return showCumulative ? [segmentRow, cumulativeRow(i)] : [segmentRow];
+    return showCumulative && i > 0 ? [segmentRow, cumulativeRow(i)] : [segmentRow];
   });
   const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);
   const ignoredNote = totalIgnored > 0 ? `
