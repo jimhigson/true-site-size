@@ -39,6 +39,9 @@ export interface RowResult {
   timeToMarkMs?: number;
   /** the per-request log for this row */
   requestLog?: RequestLogEntry[];
+  /** the badge shown beside the row name (the `row` step's `emoji`), falling
+   *  back to an auto-assigned colour circle when absent */
+  emoji?: string;
   /** byte spread across repeat runs (max - min); a determinism self-check */
   bytesSpread?: number;
   /** set when the row could not be measured (may be assigned undefined) */
@@ -66,6 +69,10 @@ export interface JourneyStep {
   script?: string;
   /** close a measurement segment as a result row of this name */
   row?: string;
+  /** on a `row` step, the badge shown beside the row name everywhere it's
+   *  referenced, instead of the auto-assigned colour circle (eg "🎮"); the
+   *  scenario sugar may set this to undefined */
+  emoji?: string | undefined;
   /** the performance mark a row waits on (when a single mark); the scenario
    *  sugar may set this to undefined */
   mark?: string | undefined;

@@ -80,10 +80,11 @@ const main = async () => {
     url: string;
     name?: string;
     mark?: string;
+    emoji?: string;
   }[];
   const scenarioSugar: JourneyStep[] = scenarios.flatMap((s, i) => [
     { goto: s.url },
-    { row: s.name ?? `scenario ${i + 1}`, mark: s.mark },
+    { row: s.name ?? `scenario ${i + 1}`, mark: s.mark, emoji: s.emoji },
   ]);
   const config: Config = {
     steps: journeyInput ? JSON.parse(journeyInput) : scenarioSugar,

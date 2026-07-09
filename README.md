@@ -155,6 +155,7 @@ journey: |
 | `{ "script": "..." }` | evaluate in the page, awaited if it returns a promise — the escape hatch |
 | `{ "row": name, "mark": markName }` | wait for the `performance.mark`, let the network settle, close the segment as a comment row |
 | `{ "row": name, "marks": [m1, m2] }` | as `mark`, but waits for *all* the named marks - for apps whose readiness is several independently-loading parts |
+| `{ "row": name, "mark": markName, "emoji": "🎮" }` | on any `row`, `emoji` badges it in the comment (everywhere the row is named) instead of the auto-assigned colour circle — the same field works on a `scenarios` entry |
 
 Any step may also carry `"afterMark": markName` to wait for an app readiness
 mark before acting. Deliberately *not* included: actionability heuristics,
@@ -163,7 +164,8 @@ for anything exotic.
 
 ## What the comment shows
 
-- a row per journey segment, each given a colour circle (🟣🟠🔵🟡🟢🔴…) shown
+- a row per journey segment, each given a colour circle (🟣🟠🔵🟡🟢🔴…) — or the
+  row's own `emoji`, when the journey defines one — shown
   wherever the segment is named so it's easy to follow across the table and
   breakdowns: wire bytes for the PR, then a column per base ref showing the
   delta (with a severity emoji graded by the % change, à la

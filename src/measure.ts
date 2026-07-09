@@ -523,6 +523,7 @@ export const runJourney = async (
             ignoredBytes,
             timeToMarkMs: Math.round(Date.now() - segmentStart),
             requestLog: [...requestLog],
+            ...(step.emoji && { emoji: step.emoji }),
           });
           resetSegment();
         } else {
@@ -538,9 +539,12 @@ export const runJourney = async (
       const remaining = steps.filter(
         (s, i) => s.row !== undefined && i >= 0,
       );
-      const nextRowName =
-        remaining[results.length]?.row ?? `row ${results.length + 1}`;
-      results.push({ name: nextRowName, error: stepError });
+      const nextRow = remaining[results.length];
+      results.push({
+        name: nextRow?.row ?? `row ${results.length + 1}`,
+        error: stepError,
+        ...(nextRow?.emoji && { emoji: nextRow.emoji }),
+      });
     }
   } finally {
     await client.close().catch(() => {});
@@ -586,7 +590,11 @@ export const measure = async (
     const errored = runsFor.find((r) => r.error);
     const ok = runsFor.filter((r) => !r.error);
     if (ok.length === 0) {
-      return { name: errored?.name ?? `row ${i + 1}`, error: errored?.error };
+      return {
+        name: errored?.name ?? `row ${i + 1}`,
+        error: errored?.error,
+        ...(errored?.emoji && { emoji: errored.emoji }),
+      };
     }
     const bytesValues = ok.map((r) => r.bytes!);
     const min = Math.min(...bytesValues);

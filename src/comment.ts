@@ -35,6 +35,12 @@ const baseHeader = (b: BaseRef) => {
 const markColours = ["🟣", "🟠", "🔵", "🟡", "🟢", "🔴", "🟤", "⚫", "⚪"];
 const markColour = (i: number) => markColours[i % markColours.length]!;
 
+/**
+ * the badge shown beside a row: the row's own `emoji` when the journey defined
+ * one, otherwise the auto-assigned colour circle for its position
+ */
+const markBadge = (row: RowResult, i: number) => row.emoji ?? markColour(i);
+
 /** build the markdown body for the PR comment */
 export const formatComment = (
   /** per-scenario head results */
@@ -187,7 +193,7 @@ export const formatComment = (
       .map((h, i) => {
         const diff = fileDiff(h, b);
         if (!diff) return null;
-        const label = `${markColour(i)} ${h.name}`;
+        const label = `${markBadge(h, i)} ${h.name}`;
         if (diff.changed.length === 0) {
           return `${label}: no per-file changes (${diff.unchangedCount} files identical)`;
         }
@@ -217,7 +223,7 @@ export const formatComment = (
       if (!br || br.error) return "—";
       return deltaCell(h.bytes!, br.bytes!);
     });
-    return `| ${[`${markColour(i)} ${h.name}`, prCell, ...baseCells].join(" | ")} |`;
+    return `| ${[`${markBadge(h, i)} ${h.name}`, prCell, ...baseCells].join(" | ")} |`;
   });
 
   const totalHead =
