@@ -31741,9 +31741,10 @@ ${entries.join("\n\n")}
   const sepCells = headerCells.map(() => "---");
   const showCumulative = head.length > 1;
   const cumulativeRow = (i) => {
+    const isEndTotal = i === head.length - 1;
     const upTo = head.slice(0, i + 1);
     const headCum = upTo.every((r) => !r.error) ? upTo.reduce((a, r) => a + r.bytes, 0) : null;
-    const prCell = headCum === null ? "\u2014" : formatBytes(headCum);
+    const prCell = headCum === null ? "\u2014" : isEndTotal ? `**${formatBytes(headCum)}**` : formatBytes(headCum);
     const baseCells = bases.map((b) => {
       if (headCum === null || !b.results) return "\u2014";
       const baseRows = upTo.map((h) => baseRowFor(b, h.name));
@@ -31751,7 +31752,8 @@ ${entries.join("\n\n")}
       const baseCum = baseRows.reduce((a, br) => a + br.bytes, 0);
       return deltaCell(headCum, baseCum);
     });
-    return `| ${["\u03A3 so far", prCell, ...baseCells].join(" | ")} |`;
+    const label = isEndTotal ? "**total**" : "\u03A3";
+    return `| ${[label, prCell, ...baseCells].join(" | ")} |`;
   };
   const rows = head.flatMap((h, i) => {
     const prCell = h.error ? `\u26A0\uFE0F unable to measure - ${h.error}` : formatBytes(h.bytes);

@@ -221,16 +221,21 @@ export const formatComment = (
   // it's omitted.
   const showCumulative = head.length > 1;
 
-  /** the cumulative "so far" row after head segment i: the running total of
-   *  segments 0..i, each base's delta measured against its own running total.
-   *  A cell is "—" whenever a segment it sums could not be measured */
+  /** the cumulative row after head segment i: the running total of segments
+   *  0..i (labelled Σ), each base's delta measured against its own running
+   *  total. The final one is the journey's end total, labelled **total** and
+   *  bolded. A cell is "—" whenever a segment it sums could not be measured */
   const cumulativeRow = (i: number) => {
+    const isEndTotal = i === head.length - 1;
     const upTo = head.slice(0, i + 1);
     const headCum =
       upTo.every((r) => !r.error) ?
         upTo.reduce((a, r) => a + r.bytes!, 0)
       : null;
-    const prCell = headCum === null ? "—" : formatBytes(headCum);
+    const prCell =
+      headCum === null ? "—"
+      : isEndTotal ? `**${formatBytes(headCum)}**`
+      : formatBytes(headCum);
     const baseCells = bases.map((b) => {
       if (headCum === null || !b.results) return "—";
       const baseRows = upTo.map((h) => baseRowFor(b, h.name));
@@ -238,7 +243,8 @@ export const formatComment = (
       const baseCum = baseRows.reduce((a, br) => a + br!.bytes!, 0);
       return deltaCell(headCum, baseCum);
     });
-    return `| ${["Σ so far", prCell, ...baseCells].join(" | ")} |`;
+    const label = isEndTotal ? "**total**" : "Σ";
+    return `| ${[label, prCell, ...baseCells].join(" | ")} |`;
   };
 
   const rows = head.flatMap((h, i) => {
