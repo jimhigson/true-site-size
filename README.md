@@ -171,7 +171,9 @@ for anything exotic.
   delta (with a severity emoji graded by the % change, à la
   [compressed-size-action](https://github.com/preactjs/compressed-size-action)),
   the relative % (📈 up / 📉 down), and the base's own bytes — stacked on their
-  own lines — and (when there's more than one row) a total in the same shape.
+  own lines. Segments are incremental, so (when there's more than one) each is
+  followed by a `Σ so far` cumulative row — the running total to reach that
+  point, in the same shape; the last one is the journey's end total.
   Each base column header links to
   the exact commit measured and is
   annotated with `git describe` (eg a branch shown as the release it descends

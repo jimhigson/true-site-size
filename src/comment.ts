@@ -214,7 +214,34 @@ export const formatComment = (
   const headerCells = ["", "PR", ...bases.map(baseHeader)];
   const sepCells = headerCells.map(() => "---");
 
-  const rows = head.map((h, i) => {
+  // segments are incremental (each reports only its own bytes), so after each
+  // one a cumulative "so far" row gives the running total to reach that point.
+  // The last cumulative row is the journey's end total - there is no separate
+  // total row. With a single segment the cumulative would just repeat it, so
+  // it's omitted.
+  const showCumulative = head.length > 1;
+
+  /** the cumulative "so far" row after head segment i: the running total of
+   *  segments 0..i, each base's delta measured against its own running total.
+   *  A cell is "—" whenever a segment it sums could not be measured */
+  const cumulativeRow = (i: number) => {
+    const upTo = head.slice(0, i + 1);
+    const headCum =
+      upTo.every((r) => !r.error) ?
+        upTo.reduce((a, r) => a + r.bytes!, 0)
+      : null;
+    const prCell = headCum === null ? "—" : formatBytes(headCum);
+    const baseCells = bases.map((b) => {
+      if (headCum === null || !b.results) return "—";
+      const baseRows = upTo.map((h) => baseRowFor(b, h.name));
+      if (baseRows.some((br) => !br || br.error)) return "—";
+      const baseCum = baseRows.reduce((a, br) => a + br!.bytes!, 0);
+      return deltaCell(headCum, baseCum);
+    });
+    return `| ${["Σ so far", prCell, ...baseCells].join(" | ")} |`;
+  };
+
+  const rows = head.flatMap((h, i) => {
     const prCell =
       h.error ? `⚠️ unable to measure - ${h.error}` : formatBytes(h.bytes);
     const baseCells = bases.map((b) => {
@@ -223,28 +250,9 @@ export const formatComment = (
       if (!br || br.error) return "—";
       return deltaCell(h.bytes!, br.bytes!);
     });
-    return `| ${[`${markBadge(h, i)} ${h.name}`, prCell, ...baseCells].join(" | ")} |`;
+    const segmentRow = `| ${[`${markBadge(h, i)} ${h.name}`, prCell, ...baseCells].join(" | ")} |`;
+    return showCumulative ? [segmentRow, cumulativeRow(i)] : [segmentRow];
   });
-
-  const totalHead =
-    head.every((h) => !h.error) ?
-      head.reduce((a, h) => a + h.bytes!, 0)
-    : null;
-  // a total only adds information when there are several rows to sum; with a
-  // single row it just repeats it
-  const totalRow =
-    totalHead != null && head.length > 1 ?
-      `| ${[
-        "**total**",
-        `**${formatBytes(totalHead)}**`,
-        ...bases.map((b) => {
-          const ok = b.results && b.results.every((r) => !r.error);
-          if (!ok) return "—";
-          const totalBase = b.results!.reduce((a, r) => a + r.bytes!, 0);
-          return deltaCell(totalHead, totalBase);
-        }),
-      ].join(" | ")} |`
-    : "";
 
   const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);
   const ignoredNote =
@@ -357,7 +365,6 @@ True wire bytes from cold cache to \`performance.mark\`, network settled.
 | ${headerCells.join(" | ")} |
 | ${sepCells.join(" | ")} |
 ${rows.join("\n")}
-${totalRow}
 ${spreadNote}${ignoredNote}${baseErrorNotes}${duplicateNotes}${comparedNote}
 ${detailsBlocks}
 ${diskSection}

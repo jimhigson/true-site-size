@@ -31739,7 +31739,21 @@ ${entries.join("\n\n")}
   };
   const headerCells = ["", "PR", ...bases.map(baseHeader)];
   const sepCells = headerCells.map(() => "---");
-  const rows = head.map((h, i) => {
+  const showCumulative = head.length > 1;
+  const cumulativeRow = (i) => {
+    const upTo = head.slice(0, i + 1);
+    const headCum = upTo.every((r) => !r.error) ? upTo.reduce((a, r) => a + r.bytes, 0) : null;
+    const prCell = headCum === null ? "\u2014" : formatBytes(headCum);
+    const baseCells = bases.map((b) => {
+      if (headCum === null || !b.results) return "\u2014";
+      const baseRows = upTo.map((h) => baseRowFor(b, h.name));
+      if (baseRows.some((br) => !br || br.error)) return "\u2014";
+      const baseCum = baseRows.reduce((a, br) => a + br.bytes, 0);
+      return deltaCell(headCum, baseCum);
+    });
+    return `| ${["\u03A3 so far", prCell, ...baseCells].join(" | ")} |`;
+  };
+  const rows = head.flatMap((h, i) => {
     const prCell = h.error ? `\u26A0\uFE0F unable to measure - ${h.error}` : formatBytes(h.bytes);
     const baseCells = bases.map((b) => {
       if (h.error) return "\u2014";
@@ -31747,19 +31761,9 @@ ${entries.join("\n\n")}
       if (!br || br.error) return "\u2014";
       return deltaCell(h.bytes, br.bytes);
     });
-    return `| ${[`${markBadge(h, i)} ${h.name}`, prCell, ...baseCells].join(" | ")} |`;
+    const segmentRow = `| ${[`${markBadge(h, i)} ${h.name}`, prCell, ...baseCells].join(" | ")} |`;
+    return showCumulative ? [segmentRow, cumulativeRow(i)] : [segmentRow];
   });
-  const totalHead = head.every((h) => !h.error) ? head.reduce((a, h) => a + h.bytes, 0) : null;
-  const totalRow = totalHead != null && head.length > 1 ? `| ${[
-    "**total**",
-    `**${formatBytes(totalHead)}**`,
-    ...bases.map((b) => {
-      const ok = b.results && b.results.every((r) => !r.error);
-      if (!ok) return "\u2014";
-      const totalBase = b.results.reduce((a, r) => a + r.bytes, 0);
-      return deltaCell(totalHead, totalBase);
-    })
-  ].join(" | ")} |` : "";
   const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);
   const ignoredNote = totalIgnored > 0 ? `
 <sub>${formatBytes(totalIgnored)} matched ignore-url-patterns and is not counted</sub>` : "";
@@ -31843,7 +31847,6 @@ True wire bytes from cold cache to \`performance.mark\`, network settled.
 | ${headerCells.join(" | ")} |
 | ${sepCells.join(" | ")} |
 ${rows.join("\n")}
-${totalRow}
 ${spreadNote}${ignoredNote}${baseErrorNotes}${duplicateNotes}${comparedNote}
 ${detailsBlocks}
 ${diskSection}
