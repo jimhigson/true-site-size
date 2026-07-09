@@ -31666,7 +31666,7 @@ var formatComment = (head, bases, {
     return "";
   };
   const deltaCell = (h, base) => {
-    const was = `was ${formatBytes(base)}`;
+    const was = `*was ${formatBytes(base)}*`;
     const d = h - base;
     if (d === 0 || Math.abs(d) < minimumChangeThreshold) {
       return `\u{1F937} \xB10 B<br>\xB10.0%<br>${was}`;

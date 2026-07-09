@@ -107,7 +107,7 @@ export const formatComment = (
    * keep the same three-line shape - a shrug, ±0 bytes and ±0.0%.
    */
   const deltaCell = (h: number, base: number) => {
-    const was = `was ${formatBytes(base)}`;
+    const was = `*was ${formatBytes(base)}*`;
     const d = h - base;
     if (d === 0 || Math.abs(d) < minimumChangeThreshold) {
       return `🤷 ±0 B<br>±0.0%<br>${was}`;
