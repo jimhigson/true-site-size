@@ -218,18 +218,25 @@ export const formatComment = (
 
   // segments are incremental (each reports only its own bytes), so after each
   // one a cumulative "so far" row gives the running total to reach that point.
-  // The last cumulative row is the journey's end total - there is no separate
-  // total row. With a single segment the cumulative would just repeat it, so
-  // it's omitted.
-  const showCumulative = head.length > 1;
+  // A journey may span several visits (`startAgain` steps relaunch the browser
+  // cold): cumulative sums never cross a visit boundary, and each multi-row
+  // visit ends with its own bolded total. With a single segment in a visit the
+  // cumulative would just repeat it, so it's omitted.
+  const visitOf = (r: RowResult) => r.visit ?? 0;
+  const visitFirstIndex = (i: number) =>
+    head.findIndex((r) => visitOf(r) === visitOf(head[i]!));
+  const visitLastIndex = (i: number) =>
+    head.findLastIndex((r) => visitOf(r) === visitOf(head[i]!));
 
-  /** the cumulative row after head segment i: the running total of segments
-   *  0..i (labelled Σ), each base's delta measured against its own running
-   *  total. The final one is the journey's end total, labelled **total** and
-   *  bolded. A cell is "—" whenever a segment it sums could not be measured */
+  /** the cumulative row after head segment i: the running total of its
+   *  visit's segments up to i (labelled Σ), each base's delta measured
+   *  against its own running total. The visit's final one is its end total,
+   *  labelled **total** (with the visit's name when it has one) and bolded.
+   *  A cell is "—" whenever a segment it sums could not be measured */
   const cumulativeRow = (i: number) => {
-    const isEndTotal = i === head.length - 1;
-    const upTo = head.slice(0, i + 1);
+    const first = visitFirstIndex(i);
+    const isEndTotal = i === visitLastIndex(i);
+    const upTo = head.slice(first, i + 1);
     const headCum =
       upTo.every((r) => !r.error) ?
         upTo.reduce((a, r) => a + r.bytes!, 0)
@@ -245,7 +252,9 @@ export const formatComment = (
       const baseCum = baseRows.reduce((a, br) => a + br!.bytes!, 0);
       return deltaCell(headCum, baseCum);
     });
-    const label = isEndTotal ? "**total**" : "Σ";
+    const visitName = head[first]!.visitName;
+    const label =
+      isEndTotal ? `**total${visitName ? ` (${visitName})` : ""}**` : "Σ";
     return `| ${[label, prCell, ...baseCells].join(" | ")} |`;
   };
 
@@ -259,9 +268,22 @@ export const formatComment = (
       return deltaCell(h.bytes!, br.bytes!);
     });
     const segmentRow = `| ${[`${markBadge(h, i)} ${h.name}`, prCell, ...baseCells].join(" | ")} |`;
-    // the cumulative after the first segment just repeats it, so it starts
-    // from the second
-    return showCumulative && i > 0 ? [segmentRow, cumulativeRow(i)] : [segmentRow];
+    const first = visitFirstIndex(i);
+    // a visit after the first opens with a divider marking the cold restart
+    const divider =
+      i === first && visitOf(h) > 0 ?
+        [
+          `| ${[
+            `🔄 *cold restart${h.visitName ? ` — ${h.visitName}` : ""}*`,
+            ...headerCells.slice(1).map(() => ""),
+          ].join(" | ")} |`,
+        ]
+      : [];
+    // the cumulative after a visit's first segment just repeats it, so it
+    // starts from the visit's second; single-row visits get no Σ/total at all
+    const cumulative =
+      visitLastIndex(i) > first && i > first ? [cumulativeRow(i)] : [];
+    return [...divider, segmentRow, ...cumulative];
   });
 
   const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);

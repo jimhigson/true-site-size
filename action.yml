@@ -21,8 +21,12 @@ inputs:
       for apps whose readiness is several independently-loading parts. A row
       may carry emoji to badge it in the comment (eg {row: menu, mark:
       menu-ready, emoji: "🎮"}) instead of the auto-assigned colour circle.
-      Any step may carry afterMark to await an app readiness mark first. Takes
-      precedence over `scenarios`.
+      {startAgain: name} relaunches the browser cold (empty cache) so one
+      journey can measure several apps served from the same build: rows after
+      it accumulate as a new visit with its own cumulative Σ rows and total;
+      as the journey's first step it just names the first visit. Any step may
+      carry afterMark to await an app readiness mark first. Takes precedence
+      over `scenarios`.
     default: ""
   ignore-url-patterns:
     description: >

@@ -96,7 +96,22 @@ const launchChrome = async () => {
       const exited = new Promise((r) => child.once("exit", r));
       child.kill();
       await exited;
-      rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5 });
+      // chrome's helper processes can outlive the main process briefly and
+      // keep writing to the profile - retry, and tolerate a leftover dir (a
+      // leaked temp profile on an ephemeral runner is harmless; failing the
+      // measurement over it is not)
+      try {
+        rmSync(userDataDir, {
+          recursive: true,
+          force: true,
+          maxRetries: 10,
+          retryDelay: 200,
+        });
+      } catch (e) {
+        console.warn(
+          `[true-site-size] could not remove temp profile ${userDataDir}: ${(e as Error).message}`,
+        );
+      }
     },
   };
 };
@@ -553,11 +568,49 @@ export const runJourney = async (
   return results;
 };
 
+/** one cold-cache browser visit: its steps plus a name for its total row */
+interface Visit {
+  name: string | undefined;
+  steps: JourneyStep[];
+}
+
+/**
+ * split a journey into visits at each `startAgain` step. Each visit runs in
+ * its own fresh browser profile, so a visit after the first starts cold - an
+ * empty cache - as if a new user arrived. A `startAgain` before any steps
+ * have accumulated (eg as the journey's first step) just names the current
+ * visit rather than opening an empty one.
+ */
+const splitIntoVisits = (steps: JourneyStep[]): Visit[] => {
+  const visits: Visit[] = [{ name: undefined, steps: [] }];
+  for (const step of steps) {
+    if (step.startAgain !== undefined) {
+      const name =
+        typeof step.startAgain === "string" ? step.startAgain : undefined;
+      const current = visits[visits.length - 1]!;
+      if (current.steps.length === 0) {
+        current.name = name;
+      } else {
+        visits.push({ name, steps: [] });
+      }
+    } else {
+      visits[visits.length - 1]!.steps.push(step);
+    }
+  }
+  return visits.filter((v) => v.steps.length > 0);
+};
+
 /**
  * Run the journey `runs` times in fresh browser profiles. Runs are expected
  * to transfer identical bytes - the repeat is a determinism self-check. The
  * reported figures (and the request log) come from the cheapest run; any
  * disagreement is surfaced as bytesSpread.
+ *
+ * `startAgain` steps divide the journey into visits, each measured in its own
+ * cold browser. Visits are aggregated across runs independently (a failed row
+ * in one visit shortens only that visit's results, so cross-run row alignment
+ * must not span visits), then concatenated in journey order with their visit
+ * index and name stamped on every row.
  */
 export const measure = async (
   steps: JourneyStep[],
@@ -570,18 +623,36 @@ export const measure = async (
     ignorePatterns,
   }: MeasureOptions,
 ): Promise<RowResult[]> => {
-  const allRuns: RowResult[][] = [];
+  const visits = splitIntoVisits(steps);
+  const runsByVisit: RowResult[][][] = visits.map(() => []);
   for (let i = 0; i < runs; i++) {
-    allRuns.push(
-      await runJourney(steps, {
-        settleMs,
-        markTimeoutMs,
-        stepTimeoutMs,
-        settleTimeoutMs,
-        ignorePatterns,
-      }),
-    );
+    for (const [vi, visit] of visits.entries()) {
+      runsByVisit[vi]!.push(
+        await runJourney(visit.steps, {
+          settleMs,
+          markTimeoutMs,
+          stepTimeoutMs,
+          settleTimeoutMs,
+          ignorePatterns,
+        }),
+      );
+    }
   }
+  return visits.flatMap((visit, vi) =>
+    aggregateRuns(runsByVisit[vi]!).map((row) => ({
+      ...row,
+      visit: vi,
+      ...(visit.name !== undefined && { visitName: visit.name }),
+    })),
+  );
+};
+
+/**
+ * collapse repeat runs of one visit into a single result per row: the
+ * cheapest run's figures, the cross-run byte spread, and any partial-failure
+ * annotation
+ */
+const aggregateRuns = (allRuns: RowResult[][]): RowResult[] => {
   const rowCount = Math.max(...allRuns.map((r) => r.length));
   return Array.from({ length: rowCount }, (_, i): RowResult => {
     const runsFor = allRuns

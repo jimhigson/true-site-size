@@ -26,10 +26,16 @@ jobs:
           # exercise the multi-ref base path (fetch + worktree + per-ref column)
           base-refs: '["main"]'
           ignore-url-patterns: '["varies\\.json$"]'
+          # the startAgain visit reloads the same page cold - its row should
+          # re-transfer the full page bytes rather than hit the http cache
           journey: |
             [
+              { "startAgain": "first visit" },
               { "goto": "/" },
               { "row": "load", "mark": "fixture-ready" },
               { "click": "#more" },
-              { "row": "after click", "mark": "more-ready" }
+              { "row": "after click", "mark": "more-ready" },
+              { "startAgain": "cold reload" },
+              { "goto": "/" },
+              { "row": "load again", "mark": "fixture-ready" }
             ]

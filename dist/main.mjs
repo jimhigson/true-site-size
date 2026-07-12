@@ -31,18 +31,18 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/defaults.js
+// node_modules/chrome-remote-interface/lib/defaults.js
 var require_defaults = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/defaults.js"(exports, module) {
+  "node_modules/chrome-remote-interface/lib/defaults.js"(exports, module) {
     "use strict";
     module.exports.HOST = "localhost";
     module.exports.PORT = 9222;
   }
 });
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/external-request.js
+// node_modules/chrome-remote-interface/lib/external-request.js
 var require_external_request = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/external-request.js"(exports, module) {
+  "node_modules/chrome-remote-interface/lib/external-request.js"(exports, module) {
     "use strict";
     var dns = __require("dns");
     var util = __require("util");
@@ -80,9 +80,9 @@ var require_external_request = __commonJS({
   }
 });
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/protocol.json
+// node_modules/chrome-remote-interface/lib/protocol.json
 var require_protocol = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/protocol.json"(exports, module) {
+  "node_modules/chrome-remote-interface/lib/protocol.json"(exports, module) {
     module.exports = {
       version: {
         major: "1",
@@ -27956,9 +27956,9 @@ Example URLs: http://www.google.com/file.html -> "google.com"
   }
 });
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/devtools.js
+// node_modules/chrome-remote-interface/lib/devtools.js
 var require_devtools = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/devtools.js"(exports, module) {
+  "node_modules/chrome-remote-interface/lib/devtools.js"(exports, module) {
     "use strict";
     var http = __require("http");
     var https = __require("https");
@@ -28071,9 +28071,9 @@ var require_devtools = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/constants.js
+// node_modules/ws/lib/constants.js
 var require_constants = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/constants.js"(exports, module) {
+  "node_modules/ws/lib/constants.js"(exports, module) {
     "use strict";
     module.exports = {
       BINARY_TYPES: ["nodebuffer", "arraybuffer", "fragments"],
@@ -28087,9 +28087,9 @@ var require_constants = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/buffer-util.js
+// node_modules/ws/lib/buffer-util.js
 var require_buffer_util = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/buffer-util.js"(exports, module) {
+  "node_modules/ws/lib/buffer-util.js"(exports, module) {
     "use strict";
     var { EMPTY_BUFFER } = require_constants();
     function concat(list, totalLength) {
@@ -28164,9 +28164,9 @@ var require_buffer_util = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/limiter.js
+// node_modules/ws/lib/limiter.js
 var require_limiter = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/limiter.js"(exports, module) {
+  "node_modules/ws/lib/limiter.js"(exports, module) {
     "use strict";
     var kDone = Symbol("kDone");
     var kRun = Symbol("kRun");
@@ -28214,9 +28214,9 @@ var require_limiter = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/permessage-deflate.js
+// node_modules/ws/lib/permessage-deflate.js
 var require_permessage_deflate = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/permessage-deflate.js"(exports, module) {
+  "node_modules/ws/lib/permessage-deflate.js"(exports, module) {
     "use strict";
     var zlib2 = __require("zlib");
     var bufferUtil = require_buffer_util();
@@ -28591,9 +28591,9 @@ var require_permessage_deflate = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/validation.js
+// node_modules/ws/lib/validation.js
 var require_validation = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/validation.js"(exports, module) {
+  "node_modules/ws/lib/validation.js"(exports, module) {
     "use strict";
     function isValidStatusCode(code) {
       return code >= 1e3 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006 || code >= 3e3 && code <= 4999;
@@ -28647,9 +28647,9 @@ var require_validation = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/receiver.js
+// node_modules/ws/lib/receiver.js
 var require_receiver = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/receiver.js"(exports, module) {
+  "node_modules/ws/lib/receiver.js"(exports, module) {
     "use strict";
     var { Writable } = __require("stream");
     var PerMessageDeflate = require_permessage_deflate();
@@ -29194,9 +29194,9 @@ var require_receiver = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/sender.js
+// node_modules/ws/lib/sender.js
 var require_sender = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/sender.js"(exports, module) {
+  "node_modules/ws/lib/sender.js"(exports, module) {
     "use strict";
     var net = __require("net");
     var tls = __require("tls");
@@ -29555,9 +29555,9 @@ var require_sender = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/event-target.js
+// node_modules/ws/lib/event-target.js
 var require_event_target = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/event-target.js"(exports, module) {
+  "node_modules/ws/lib/event-target.js"(exports, module) {
     "use strict";
     var Event = class {
       /**
@@ -29692,9 +29692,9 @@ var require_event_target = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/extension.js
+// node_modules/ws/lib/extension.js
 var require_extension = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/extension.js"(exports, module) {
+  "node_modules/ws/lib/extension.js"(exports, module) {
     "use strict";
     var tokenChars = [
       0,
@@ -29982,9 +29982,9 @@ var require_extension = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/websocket.js
+// node_modules/ws/lib/websocket.js
 var require_websocket = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/websocket.js"(exports, module) {
+  "node_modules/ws/lib/websocket.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var https = __require("https");
@@ -30763,9 +30763,9 @@ var require_websocket = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/stream.js
+// node_modules/ws/lib/stream.js
 var require_stream = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/stream.js"(exports, module) {
+  "node_modules/ws/lib/stream.js"(exports, module) {
     "use strict";
     var { Duplex } = __require("stream");
     function emitClose(stream) {
@@ -30878,9 +30878,9 @@ var require_stream = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/websocket-server.js
+// node_modules/ws/lib/websocket-server.js
 var require_websocket_server = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/websocket-server.js"(exports, module) {
+  "node_modules/ws/lib/websocket-server.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var http = __require("http");
@@ -31199,9 +31199,9 @@ var require_websocket_server = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ws@7.5.11/node_modules/ws/index.js
+// node_modules/ws/index.js
 var require_ws = __commonJS({
-  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/index.js"(exports, module) {
+  "node_modules/ws/index.js"(exports, module) {
     "use strict";
     var WebSocket = require_websocket();
     WebSocket.createWebSocketStream = require_stream();
@@ -31212,9 +31212,9 @@ var require_ws = __commonJS({
   }
 });
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/api.js
+// node_modules/chrome-remote-interface/lib/api.js
 var require_api = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/api.js"(exports, module) {
+  "node_modules/chrome-remote-interface/lib/api.js"(exports, module) {
     "use strict";
     function arrayToObject(parameters) {
       const keyValue = {};
@@ -31295,9 +31295,9 @@ var require_api = __commonJS({
   }
 });
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/chrome.js
+// node_modules/chrome-remote-interface/lib/chrome.js
 var require_chrome = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/chrome.js"(exports, module) {
+  "node_modules/chrome-remote-interface/lib/chrome.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var util = __require("util");
@@ -31557,9 +31557,9 @@ var require_chrome = __commonJS({
   }
 });
 
-// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/index.js
+// node_modules/chrome-remote-interface/index.js
 var require_chrome_remote_interface = __commonJS({
-  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/index.js"(exports, module) {
+  "node_modules/chrome-remote-interface/index.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var dns = __require("dns");
@@ -31741,10 +31741,13 @@ ${entries.join("\n\n")}
   };
   const headerCells = ["", "PR", ...bases.map(baseHeader)];
   const sepCells = headerCells.map(() => "---");
-  const showCumulative = head.length > 1;
+  const visitOf = (r) => r.visit ?? 0;
+  const visitFirstIndex = (i) => head.findIndex((r) => visitOf(r) === visitOf(head[i]));
+  const visitLastIndex = (i) => head.findLastIndex((r) => visitOf(r) === visitOf(head[i]));
   const cumulativeRow = (i) => {
-    const isEndTotal = i === head.length - 1;
-    const upTo = head.slice(0, i + 1);
+    const first = visitFirstIndex(i);
+    const isEndTotal = i === visitLastIndex(i);
+    const upTo = head.slice(first, i + 1);
     const headCum = upTo.every((r) => !r.error) ? upTo.reduce((a, r) => a + r.bytes, 0) : null;
     const prCell = headCum === null ? "\u2014" : isEndTotal ? `**${formatBytes(headCum)}**` : formatBytes(headCum);
     const baseCells = bases.map((b) => {
@@ -31754,7 +31757,8 @@ ${entries.join("\n\n")}
       const baseCum = baseRows.reduce((a, br) => a + br.bytes, 0);
       return deltaCell(headCum, baseCum);
     });
-    const label = isEndTotal ? "**total**" : "\u03A3";
+    const visitName = head[first].visitName;
+    const label = isEndTotal ? `**total${visitName ? ` (${visitName})` : ""}**` : "\u03A3";
     return `| ${[label, prCell, ...baseCells].join(" | ")} |`;
   };
   const rows = head.flatMap((h, i) => {
@@ -31766,7 +31770,15 @@ ${entries.join("\n\n")}
       return deltaCell(h.bytes, br.bytes);
     });
     const segmentRow = `| ${[`${markBadge(h, i)} ${h.name}`, prCell, ...baseCells].join(" | ")} |`;
-    return showCumulative && i > 0 ? [segmentRow, cumulativeRow(i)] : [segmentRow];
+    const first = visitFirstIndex(i);
+    const divider = i === first && visitOf(h) > 0 ? [
+      `| ${[
+        `\u{1F504} *cold restart${h.visitName ? ` \u2014 ${h.visitName}` : ""}*`,
+        ...headerCells.slice(1).map(() => "")
+      ].join(" | ")} |`
+    ] : [];
+    const cumulative = visitLastIndex(i) > first && i > first ? [cumulativeRow(i)] : [];
+    return [...divider, segmentRow, ...cumulative];
   });
   const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);
   const ignoredNote = totalIgnored > 0 ? `
@@ -32154,7 +32166,18 @@ var launchChrome = async () => {
       const exited = new Promise((r) => child.once("exit", r));
       child.kill();
       await exited;
-      rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5 });
+      try {
+        rmSync(userDataDir, {
+          recursive: true,
+          force: true,
+          maxRetries: 10,
+          retryDelay: 200
+        });
+      } catch (e) {
+        console.warn(
+          `[true-site-size] could not remove temp profile ${userDataDir}: ${e.message}`
+        );
+      }
     }
   };
 };
@@ -32500,6 +32523,23 @@ var runJourney = async (steps, {
   }
   return results;
 };
+var splitIntoVisits = (steps) => {
+  const visits = [{ name: void 0, steps: [] }];
+  for (const step of steps) {
+    if (step.startAgain !== void 0) {
+      const name = typeof step.startAgain === "string" ? step.startAgain : void 0;
+      const current = visits[visits.length - 1];
+      if (current.steps.length === 0) {
+        current.name = name;
+      } else {
+        visits.push({ name, steps: [] });
+      }
+    } else {
+      visits[visits.length - 1].steps.push(step);
+    }
+  }
+  return visits.filter((v) => v.steps.length > 0);
+};
 var measure = async (steps, {
   runs,
   settleMs,
@@ -32508,18 +32548,30 @@ var measure = async (steps, {
   settleTimeoutMs,
   ignorePatterns
 }) => {
-  const allRuns = [];
+  const visits = splitIntoVisits(steps);
+  const runsByVisit = visits.map(() => []);
   for (let i = 0; i < runs; i++) {
-    allRuns.push(
-      await runJourney(steps, {
-        settleMs,
-        markTimeoutMs,
-        stepTimeoutMs,
-        settleTimeoutMs,
-        ignorePatterns
-      })
-    );
+    for (const [vi, visit] of visits.entries()) {
+      runsByVisit[vi].push(
+        await runJourney(visit.steps, {
+          settleMs,
+          markTimeoutMs,
+          stepTimeoutMs,
+          settleTimeoutMs,
+          ignorePatterns
+        })
+      );
+    }
   }
+  return visits.flatMap(
+    (visit, vi) => aggregateRuns(runsByVisit[vi]).map((row) => ({
+      ...row,
+      visit: vi,
+      ...visit.name !== void 0 && { visitName: visit.name }
+    }))
+  );
+};
+var aggregateRuns = (allRuns) => {
   const rowCount = Math.max(...allRuns.map((r) => r.length));
   return Array.from({ length: rowCount }, (_, i) => {
     const runsFor = allRuns.map((run2) => run2[i]).filter((r) => Boolean(r));

@@ -44,15 +44,20 @@ export interface RowResult {
   emoji?: string;
   /** byte spread across repeat runs (max - min); a determinism self-check */
   bytesSpread?: number;
+  /** index of the visit (cold browser session) this row was measured in;
+   *  absent (eg cached pre-visit results) reads as visit 0 */
+  visit?: number;
+  /** the visit's name (a `startAgain` step's value), labelling its total row */
+  visitName?: string;
   /** set when the row could not be measured (may be assigned undefined) */
   error?: string | undefined;
 }
 
 /**
  * a journey step. Exactly one action key is set per step (goto | click |
- * waitFor | waitForGone | keys | script | row), and a row carries either a
- * single `mark` or several `marks`. Any step may also wait on `afterMark`
- * before running.
+ * waitFor | waitForGone | keys | script | row | startAgain), and a row
+ * carries either a single `mark` or several `marks`. Any step may also wait
+ * on `afterMark` before running.
  */
 export interface JourneyStep {
   /** navigate to this url */
@@ -78,6 +83,10 @@ export interface JourneyStep {
   mark?: string | undefined;
   /** the performance marks a row waits on (all must fire) */
   marks?: string[];
+  /** relaunch the browser cold (empty cache) - subsequent rows accumulate as
+   *  a new visit with its own total; a string names the visit. As the first
+   *  step it just names the journey's first visit */
+  startAgain?: true | string;
   /** wait for this app-readiness mark before the step runs */
   afterMark?: string;
 }

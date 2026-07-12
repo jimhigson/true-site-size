@@ -156,6 +156,7 @@ journey: |
 | `{ "row": name, "mark": markName }` | wait for the `performance.mark`, let the network settle, close the segment as a comment row |
 | `{ "row": name, "marks": [m1, m2] }` | as `mark`, but waits for *all* the named marks - for apps whose readiness is several independently-loading parts |
 | `{ "row": name, "mark": markName, "emoji": "🎮" }` | on any `row`, `emoji` badges it in the comment (everywhere the row is named) instead of the auto-assigned colour circle — the same field works on a `scenarios` entry |
+| `{ "startAgain": name }` | relaunch the browser **cold** (empty cache, as if a new user arrived) — the rows that follow accumulate as a new *visit* with its own Σ rows and its own bolded total, so one journey (and one build) can measure several apps served from the same `serve-dir`. `name` (or `true` for nameless) labels the visit's total; as the journey's *first* step it just names the first visit |
 
 Any step may also carry `"afterMark": markName` to wait for an app readiness
 mark before acting. Deliberately *not* included: actionability heuristics,
@@ -173,7 +174,10 @@ for anything exotic.
   the relative % (📈 up / 📉 down), and the base's own bytes — stacked on their
   own lines. Segments are incremental, so (when there's more than one) each is
   followed by a `Σ so far` cumulative row — the running total to reach that
-  point, in the same shape; the last one is the journey's end total.
+  point, in the same shape; the last one is the visit's end total. A journey
+  with `startAgain` steps shows a 🔄 *cold restart* divider at each visit
+  boundary; cumulative rows never sum across it, and every multi-row visit
+  ends with its own bolded total (labelled with the visit's name).
   Each base column header links to
   the exact commit measured and is
   annotated with `git describe` (eg a branch shown as the release it descends
