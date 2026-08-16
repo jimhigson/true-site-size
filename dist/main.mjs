@@ -31,18 +31,18 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// node_modules/chrome-remote-interface/lib/defaults.js
+// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/defaults.js
 var require_defaults = __commonJS({
-  "node_modules/chrome-remote-interface/lib/defaults.js"(exports, module) {
+  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/defaults.js"(exports, module) {
     "use strict";
     module.exports.HOST = "localhost";
     module.exports.PORT = 9222;
   }
 });
 
-// node_modules/chrome-remote-interface/lib/external-request.js
+// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/external-request.js
 var require_external_request = __commonJS({
-  "node_modules/chrome-remote-interface/lib/external-request.js"(exports, module) {
+  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/external-request.js"(exports, module) {
     "use strict";
     var dns = __require("dns");
     var util = __require("util");
@@ -80,9 +80,9 @@ var require_external_request = __commonJS({
   }
 });
 
-// node_modules/chrome-remote-interface/lib/protocol.json
+// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/protocol.json
 var require_protocol = __commonJS({
-  "node_modules/chrome-remote-interface/lib/protocol.json"(exports, module) {
+  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/protocol.json"(exports, module) {
     module.exports = {
       version: {
         major: "1",
@@ -27956,9 +27956,9 @@ Example URLs: http://www.google.com/file.html -> "google.com"
   }
 });
 
-// node_modules/chrome-remote-interface/lib/devtools.js
+// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/devtools.js
 var require_devtools = __commonJS({
-  "node_modules/chrome-remote-interface/lib/devtools.js"(exports, module) {
+  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/devtools.js"(exports, module) {
     "use strict";
     var http = __require("http");
     var https = __require("https");
@@ -28071,9 +28071,9 @@ var require_devtools = __commonJS({
   }
 });
 
-// node_modules/ws/lib/constants.js
+// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/constants.js
 var require_constants = __commonJS({
-  "node_modules/ws/lib/constants.js"(exports, module) {
+  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/constants.js"(exports, module) {
     "use strict";
     module.exports = {
       BINARY_TYPES: ["nodebuffer", "arraybuffer", "fragments"],
@@ -28087,9 +28087,9 @@ var require_constants = __commonJS({
   }
 });
 
-// node_modules/ws/lib/buffer-util.js
+// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/buffer-util.js
 var require_buffer_util = __commonJS({
-  "node_modules/ws/lib/buffer-util.js"(exports, module) {
+  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/buffer-util.js"(exports, module) {
     "use strict";
     var { EMPTY_BUFFER } = require_constants();
     function concat(list, totalLength) {
@@ -28164,9 +28164,9 @@ var require_buffer_util = __commonJS({
   }
 });
 
-// node_modules/ws/lib/limiter.js
+// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/limiter.js
 var require_limiter = __commonJS({
-  "node_modules/ws/lib/limiter.js"(exports, module) {
+  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/limiter.js"(exports, module) {
     "use strict";
     var kDone = Symbol("kDone");
     var kRun = Symbol("kRun");
@@ -28214,9 +28214,9 @@ var require_limiter = __commonJS({
   }
 });
 
-// node_modules/ws/lib/permessage-deflate.js
+// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/permessage-deflate.js
 var require_permessage_deflate = __commonJS({
-  "node_modules/ws/lib/permessage-deflate.js"(exports, module) {
+  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/permessage-deflate.js"(exports, module) {
     "use strict";
     var zlib2 = __require("zlib");
     var bufferUtil = require_buffer_util();
@@ -28591,9 +28591,9 @@ var require_permessage_deflate = __commonJS({
   }
 });
 
-// node_modules/ws/lib/validation.js
+// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/validation.js
 var require_validation = __commonJS({
-  "node_modules/ws/lib/validation.js"(exports, module) {
+  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/validation.js"(exports, module) {
     "use strict";
     function isValidStatusCode(code) {
       return code >= 1e3 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006 || code >= 3e3 && code <= 4999;
@@ -28647,9 +28647,9 @@ var require_validation = __commonJS({
   }
 });
 
-// node_modules/ws/lib/receiver.js
+// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/receiver.js
 var require_receiver = __commonJS({
-  "node_modules/ws/lib/receiver.js"(exports, module) {
+  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/receiver.js"(exports, module) {
     "use strict";
     var { Writable } = __require("stream");
     var PerMessageDeflate = require_permessage_deflate();
@@ -29194,9 +29194,9 @@ var require_receiver = __commonJS({
   }
 });
 
-// node_modules/ws/lib/sender.js
+// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/sender.js
 var require_sender = __commonJS({
-  "node_modules/ws/lib/sender.js"(exports, module) {
+  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/sender.js"(exports, module) {
     "use strict";
     var net = __require("net");
     var tls = __require("tls");
@@ -29555,9 +29555,9 @@ var require_sender = __commonJS({
   }
 });
 
-// node_modules/ws/lib/event-target.js
+// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/event-target.js
 var require_event_target = __commonJS({
-  "node_modules/ws/lib/event-target.js"(exports, module) {
+  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/event-target.js"(exports, module) {
     "use strict";
     var Event = class {
       /**
@@ -29692,9 +29692,9 @@ var require_event_target = __commonJS({
   }
 });
 
-// node_modules/ws/lib/extension.js
+// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/extension.js
 var require_extension = __commonJS({
-  "node_modules/ws/lib/extension.js"(exports, module) {
+  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/extension.js"(exports, module) {
     "use strict";
     var tokenChars = [
       0,
@@ -29982,9 +29982,9 @@ var require_extension = __commonJS({
   }
 });
 
-// node_modules/ws/lib/websocket.js
+// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/websocket.js
 var require_websocket = __commonJS({
-  "node_modules/ws/lib/websocket.js"(exports, module) {
+  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/websocket.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var https = __require("https");
@@ -30763,9 +30763,9 @@ var require_websocket = __commonJS({
   }
 });
 
-// node_modules/ws/lib/stream.js
+// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/stream.js
 var require_stream = __commonJS({
-  "node_modules/ws/lib/stream.js"(exports, module) {
+  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/stream.js"(exports, module) {
     "use strict";
     var { Duplex } = __require("stream");
     function emitClose(stream) {
@@ -30878,9 +30878,9 @@ var require_stream = __commonJS({
   }
 });
 
-// node_modules/ws/lib/websocket-server.js
+// node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/websocket-server.js
 var require_websocket_server = __commonJS({
-  "node_modules/ws/lib/websocket-server.js"(exports, module) {
+  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/lib/websocket-server.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var http = __require("http");
@@ -31199,9 +31199,9 @@ var require_websocket_server = __commonJS({
   }
 });
 
-// node_modules/ws/index.js
+// node_modules/.pnpm/ws@7.5.11/node_modules/ws/index.js
 var require_ws = __commonJS({
-  "node_modules/ws/index.js"(exports, module) {
+  "node_modules/.pnpm/ws@7.5.11/node_modules/ws/index.js"(exports, module) {
     "use strict";
     var WebSocket = require_websocket();
     WebSocket.createWebSocketStream = require_stream();
@@ -31212,9 +31212,9 @@ var require_ws = __commonJS({
   }
 });
 
-// node_modules/chrome-remote-interface/lib/api.js
+// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/api.js
 var require_api = __commonJS({
-  "node_modules/chrome-remote-interface/lib/api.js"(exports, module) {
+  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/api.js"(exports, module) {
     "use strict";
     function arrayToObject(parameters) {
       const keyValue = {};
@@ -31295,9 +31295,9 @@ var require_api = __commonJS({
   }
 });
 
-// node_modules/chrome-remote-interface/lib/chrome.js
+// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/chrome.js
 var require_chrome = __commonJS({
-  "node_modules/chrome-remote-interface/lib/chrome.js"(exports, module) {
+  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/lib/chrome.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var util = __require("util");
@@ -31557,9 +31557,9 @@ var require_chrome = __commonJS({
   }
 });
 
-// node_modules/chrome-remote-interface/index.js
+// node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/index.js
 var require_chrome_remote_interface = __commonJS({
-  "node_modules/chrome-remote-interface/index.js"(exports, module) {
+  "node_modules/.pnpm/chrome-remote-interface@0.33.3/node_modules/chrome-remote-interface/index.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
     var dns = __require("dns");
@@ -31599,8 +31599,8 @@ var require_chrome_remote_interface = __commonJS({
 
 // src/main.ts
 import { createHash as createHash2 } from "node:crypto";
-import { execSync } from "node:child_process";
-import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync2, rmSync as rmSync2, writeFileSync } from "node:fs";
+import { execSync as execSync2 } from "node:child_process";
+import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync2, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join as join3, resolve } from "node:path";
 
@@ -31635,7 +31635,8 @@ var formatComment = (head, bases, {
   minimumChangeThreshold = 1,
   collapsibleBreakdown = true,
   headDisk = null,
-  measureDisk = true
+  measureDisk = true,
+  baseSkippedReason = null
 }) => {
   const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
   const fileOf = (url) => {
@@ -31803,7 +31804,9 @@ ${entries.join("\n\n")}
   const spreadNote = maxSpread > spreadToleranceBytes ? `
 > \u26A0\uFE0F **determinism check failed**: repeat runs transferred different bytes (max spread ${formatBytes(maxSpread)}, tolerance ${formatBytes(spreadToleranceBytes)}). Something loads non-deterministically - do not trust deltas until investigated. The per-request breakdown in the run logs shows which requests varied.` : maxSpread > 0 ? `
 <sub>runs varied by up to ${formatBytes(maxSpread)} (h2 header-compression noise, within the ${formatBytes(spreadToleranceBytes)} tolerance) - the minimum is reported</sub>` : "";
-  const comparedNote = bases.length === 0 ? "\n<sub>no base ref to compare against - showing head only</sub>" : "";
+  const noBaseNote = baseSkippedReason ? `<sub>showing head only - base comparison skipped: ${baseSkippedReason}</sub>` : "<sub>no base ref to compare against - showing head only</sub>";
+  const comparedNote = bases.length === 0 ? `
+${noBaseNote}` : "";
   const detailsBlocks = bases.map(breakdownFor).join("");
   const diskFilesOf = (disk) => {
     const m = /* @__PURE__ */ new Map();
@@ -31854,7 +31857,8 @@ Every file in the built site, loaded or not, compressed as served.
 | ${diskHeader.join(" | ")} |
 | ${diskHeader.map(() => "---").join(" | ")} |
 ${diskTotalRow}
-${bases.length === 0 ? "<sub>no base ref to compare against - showing head only</sub>\n" : ""}${bases.map(diskBreakdownFor).join("")}` : "";
+${bases.length === 0 ? `${noBaseNote}
+` : ""}${bases.map(diskBreakdownFor).join("")}` : "";
   return `${markerFor(commentKey)}
 ### \u{1F4E1} real network cost to ready${commentKey ? ` (${commentKey})` : ""}
 
@@ -32598,16 +32602,78 @@ var aggregateRuns = (allRuns) => {
   });
 };
 
+// src/run.ts
+import { execSync } from "node:child_process";
+var run = (cmd, cwd) => {
+  console.log(`[true-site-size] $ ${cmd} (in ${cwd})`);
+  execSync(cmd, { cwd, stdio: "inherit" });
+};
+var runQuiet = (cmd, cwd) => execSync(cmd, { cwd, stdio: "pipe" }).toString().trim();
+
+// src/workspaceGit.ts
+import { rmSync as rmSync2 } from "node:fs";
+var gitIsUsable = (workspace) => {
+  try {
+    runQuiet("git rev-parse --git-dir", workspace);
+    return true;
+  } catch {
+    return false;
+  }
+};
+var baseComparisonBlocker = (workspace) => {
+  if (process.env["ACT"] && !process.env["TRUE_SITE_SIZE_ALLOW_DESTRUCTIVE"]) {
+    return "running locally under act, where the workspace can be your own working directory (`act --bind`) - measuring a base would run clean-command in it and add a git worktree inside it. Set TRUE_SITE_SIZE_ALLOW_DESTRUCTIVE=1 to compare anyway, on a checkout you are happy to lose";
+  }
+  if (!gitIsUsable(workspace)) {
+    return "the workspace is not a usable git repository (a git worktree checkout, whose .git file points at a gitdir that is not here?)";
+  }
+  return null;
+};
+var addedWorktrees = /* @__PURE__ */ new Map();
+var removeAll = () => {
+  for (const [dir, workspace] of addedWorktrees) removeBaseWorktree(workspace, dir);
+};
+var cleanupHandlersRegistered = false;
+var registerCleanupHandlers = () => {
+  if (cleanupHandlersRegistered) return;
+  cleanupHandlersRegistered = true;
+  process.on("exit", removeAll);
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.on(signal, () => {
+      removeAll();
+      process.exit(1);
+    });
+  }
+};
+var addBaseWorktree = (workspace, dir, commitish) => {
+  registerCleanupHandlers();
+  rmSync2(dir, { recursive: true, force: true });
+  try {
+    runQuiet("git worktree prune", workspace);
+  } catch {
+  }
+  addedWorktrees.set(dir, workspace);
+  run(`git worktree add --detach ${dir} ${commitish}`, workspace);
+};
+var removeBaseWorktree = (workspace, dir) => {
+  addedWorktrees.delete(dir);
+  try {
+    run(`git worktree remove --force ${dir}`, workspace);
+  } catch {
+  }
+  rmSync2(dir, { recursive: true, force: true });
+  try {
+    runQuiet("git worktree prune", workspace);
+  } catch {
+  }
+};
+
 // src/main.ts
 var input = (name, fallback, { allowEmpty = false } = {}) => {
   const v = process.env[`INPUT_${name.toUpperCase().replaceAll("-", "_")}`];
   if (v === void 0) return fallback;
   if (v === "" && !allowEmpty) return fallback;
   return v;
-};
-var run = (cmd, cwd) => {
-  console.log(`[true-site-size] $ ${cmd} (in ${cwd})`);
-  execSync(cmd, { cwd, stdio: "inherit" });
 };
 var buildAndMeasure = async (checkoutDir, config) => {
   if (config.installCommand) run(config.installCommand, checkoutDir);
@@ -32690,6 +32756,12 @@ var main = async () => {
     process.exit(1);
   }, config.timeoutMs).unref();
   const workspace = process.env["GITHUB_WORKSPACE"] ?? process.cwd();
+  const baseSkippedReason = baseComparisonBlocker(workspace);
+  if (baseSkippedReason) {
+    console.warn(
+      `[true-site-size] base comparison skipped: ${baseSkippedReason}`
+    );
+  }
   const logBreakdown = (label, results) => {
     for (const r of results) {
       if (r.error) {
@@ -32724,7 +32796,7 @@ var main = async () => {
   const eventPath = process.env["GITHUB_EVENT_PATH"];
   const event = eventPath && existsSync3(eventPath) ? JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(eventPath, "utf8"))) : {};
   const prBase = event.pull_request?.base?.ref;
-  const compareRefs = config.baseRefs.length ? config.baseRefs : prBase ? [prBase] : [];
+  const compareRefs = baseSkippedReason ? [] : config.baseRefs.length ? config.baseRefs : prBase ? [prBase] : [];
   const serverUrl = process.env["GITHUB_SERVER_URL"];
   const repo = process.env["GITHUB_REPOSITORY"];
   const configHash = createHash2("sha256").update(
@@ -32754,7 +32826,7 @@ var main = async () => {
     const base = { ref, sha: null, describe: null, url: null };
     try {
       run(`git fetch --tags --depth=100 origin ${ref}`, workspace);
-      base.sha = execSync("git rev-parse FETCH_HEAD", { cwd: workspace }).toString().trim();
+      base.sha = execSync2("git rev-parse FETCH_HEAD", { cwd: workspace }).toString().trim();
     } catch {
       console.warn(`[true-site-size] could not fetch base ref "${ref}"`);
       base.error = `could not fetch ref "${ref}" - does it exist on origin?`;
@@ -32763,7 +32835,7 @@ var main = async () => {
       return base;
     }
     try {
-      base.describe = execSync("git describe --tags FETCH_HEAD", {
+      base.describe = execSync2("git describe --tags FETCH_HEAD", {
         cwd: workspace
       }).toString().trim();
     } catch {
@@ -32783,9 +32855,8 @@ var main = async () => {
     console.log(`[true-site-size] measuring base (${ref})...`);
     cleanOnce();
     const baseDir = join3(workspace, ".true-site-size-base");
-    rmSync2(baseDir, { recursive: true, force: true });
     try {
-      run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
+      addBaseWorktree(workspace, baseDir, "FETCH_HEAD");
       const built = await buildAndMeasure(baseDir, config);
       base.results = built.results;
       base.disk = built.disk;
@@ -32806,10 +32877,7 @@ var main = async () => {
       base.results = null;
       base.disk = null;
     } finally {
-      try {
-        run(`git worktree remove --force ${baseDir}`, workspace);
-      } catch {
-      }
+      removeBaseWorktree(workspace, baseDir);
     }
     return base;
   };
@@ -32826,7 +32894,8 @@ var main = async () => {
     minimumChangeThreshold: config.minimumChangeThreshold,
     collapsibleBreakdown: config.collapsibleBreakdown,
     headDisk,
-    measureDisk: config.measureDisk
+    measureDisk: config.measureDisk,
+    baseSkippedReason
   });
   console.log(body);
   const issueNumber = config.prNumber ? Number(config.prNumber) : event.pull_request?.number;

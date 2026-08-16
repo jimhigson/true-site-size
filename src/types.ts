@@ -164,6 +164,8 @@ export interface CommentOptions {
   collapsibleBreakdown?: boolean;
   headDisk?: DiskSizes | null;
   measureDisk?: boolean;
+  /** why no base was measured, when the workspace ruled the comparison out */
+  baseSkippedReason?: string | null;
 }
 
 /** the options object passed to postComment */

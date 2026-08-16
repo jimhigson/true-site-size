@@ -56,6 +56,7 @@ export const formatComment = (
     collapsibleBreakdown = true,
     headDisk = null,
     measureDisk = true,
+    baseSkippedReason = null,
   }: CommentOptions,
 ) => {
   const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
@@ -330,10 +331,13 @@ export const formatComment = (
       `\n<sub>runs varied by up to ${formatBytes(maxSpread)} (h2 header-compression noise, within the ${formatBytes(spreadToleranceBytes)} tolerance) - the minimum is reported</sub>`
     : "";
 
-  const comparedNote =
-    bases.length === 0 ?
-      "\n<sub>no base ref to compare against - showing head only</sub>"
-    : "";
+  // with nothing to compare against, say so once - and say why, when the
+  // workspace itself ruled the comparison out rather than there being no ref
+  const noBaseNote =
+    baseSkippedReason ?
+      `<sub>showing head only - base comparison skipped: ${baseSkippedReason}</sub>`
+    : "<sub>no base ref to compare against - showing head only</sub>";
+  const comparedNote = bases.length === 0 ? `\n${noBaseNote}` : "";
 
   // per-file breakdown grouped under a heading per base ref
   const detailsBlocks = bases.map(breakdownFor).join("");
@@ -386,7 +390,7 @@ Every file in the built site, loaded or not, compressed as served.
 | ${diskHeader.join(" | ")} |
 | ${diskHeader.map(() => "---").join(" | ")} |
 ${diskTotalRow}
-${bases.length === 0 ? "<sub>no base ref to compare against - showing head only</sub>\n" : ""}${bases.map(diskBreakdownFor).join("")}`
+${bases.length === 0 ? `${noBaseNote}\n` : ""}${bases.map(diskBreakdownFor).join("")}`
     : "";
 
   return `${markerFor(commentKey)}

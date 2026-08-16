@@ -1,13 +1,19 @@
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { formatComment, postComment } from "./comment.ts";
 import { formatBytes, formatDuration } from "./formatBytes.ts";
 import { measure } from "./measure.ts";
+import { run } from "./run.ts";
 import { assertCompressionSupported, diskSizes, serve } from "./serve.ts";
+import {
+  addBaseWorktree,
+  baseComparisonBlocker,
+  removeBaseWorktree,
+} from "./workspaceGit.ts";
 
 import type {
   BaseRef,
@@ -31,11 +37,6 @@ const input = (
   if (v === undefined) return fallback;
   if (v === "" && !allowEmpty) return fallback;
   return v;
-};
-
-const run = (cmd: string, cwd: string) => {
-  console.log(`[true-site-size] $ ${cmd} (in ${cwd})`);
-  execSync(cmd, { cwd, stdio: "inherit" });
 };
 
 /** build a checkout and measure all scenarios against its served output */
@@ -149,6 +150,16 @@ const main = async () => {
 
   const workspace = process.env["GITHUB_WORKSPACE"] ?? process.cwd();
 
+  // decided before anything is built, so the run says up front that it will
+  // report head alone - and, more to the point, so a workspace that must not
+  // be written to is never cleaned or worktree'd into
+  const baseSkippedReason = baseComparisonBlocker(workspace);
+  if (baseSkippedReason) {
+    console.warn(
+      `[true-site-size] base comparison skipped: ${baseSkippedReason}`,
+    );
+  }
+
   const logBreakdown = (label: string, results: RowResult[]) => {
     for (const r of results) {
       if (r.error) {
@@ -191,9 +202,11 @@ const main = async () => {
     : {};
   const prBase = event.pull_request?.base?.ref;
   // explicit base-refs, else the PR base as a single ref. Each is measured and
-  // shown as its own column. Outside a PR (or with neither) head stands alone.
+  // shown as its own column. Outside a PR (or with neither), or where the
+  // workspace bars measuring a base at all, head stands alone.
   const compareRefs =
-    config.baseRefs.length ? config.baseRefs
+    baseSkippedReason ? []
+    : config.baseRefs.length ? config.baseRefs
     : prBase ? [prBase]
     : [];
 
@@ -295,9 +308,8 @@ const main = async () => {
     console.log(`[true-site-size] measuring base (${ref})...`);
     cleanOnce();
     const baseDir = join(workspace, ".true-site-size-base");
-    rmSync(baseDir, { recursive: true, force: true });
     try {
-      run(`git worktree add --detach ${baseDir} FETCH_HEAD`, workspace);
+      addBaseWorktree(workspace, baseDir, "FETCH_HEAD");
       const built = await buildAndMeasure(baseDir, config);
       base.results = built.results;
       base.disk = built.disk;
@@ -320,12 +332,7 @@ const main = async () => {
       base.results = null;
       base.disk = null;
     } finally {
-      // remove the worktree if it was added; ignore if it never existed
-      try {
-        run(`git worktree remove --force ${baseDir}`, workspace);
-      } catch {
-        // no worktree to remove (eg add failed) - nothing to clean up
-      }
+      removeBaseWorktree(workspace, baseDir);
     }
     return base;
   };
@@ -348,6 +355,7 @@ const main = async () => {
     collapsibleBreakdown: config.collapsibleBreakdown,
     headDisk,
     measureDisk: config.measureDisk,
+    baseSkippedReason,
   });
   console.log(body);
 

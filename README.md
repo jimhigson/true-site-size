@@ -322,6 +322,25 @@ they can be set for local/advanced runs (eg under [`act`](https://github.com/nek
 | `CHROME_PATH` | path to the Chrome/Chromium binary, if not in a standard location |
 | `TRUE_SITE_SIZE_CACHE_DIR` | directory the base-ref measurement is cached in, keyed by `(base sha, config)` |
 | `TRUE_SITE_SIZE_OUTPUT_FILE` | also write the comment markdown to this file. Useful for local runs (eg `act`, where `GITHUB_STEP_SUMMARY` lives inside the container and isn't readable on the host) that want to read the report back out |
+| `TRUE_SITE_SIZE_ALLOW_DESTRUCTIVE` | measure base refs even under `act` (see below) — set it only on a checkout you are content to have cleaned and worktree'd into |
+
+## Running locally under act
+
+Measuring a base ref writes to the workspace: it runs `clean-command` there
+(often `rm -rf dist node_modules`) and checks the base out into a git worktree
+at `.true-site-size-base` inside it. On a runner that is a throwaway checkout;
+under [`act --bind`](https://github.com/nektos/act) the workspace is your own
+working directory, where neither is welcome. So whenever `$ACT` is set the base
+comparison is skipped and the report covers head alone, saying so in place of
+the comparison columns. `TRUE_SITE_SIZE_ALLOW_DESTRUCTIVE=1` compares anyway.
+
+The comparison is skipped the same way, with the same head-only report, when
+git cannot work in the workspace at all — as when the checkout is itself a git
+worktree, whose `.git` is a file naming a gitdir that is not present inside the
+container, so every git command answers `fatal: not a git repository: (null)`.
+
+`install-command` and `build-command` run in the workspace either way: building
+head is what there is to measure.
 
 ## Authorship
 
