@@ -288,10 +288,17 @@ export const formatComment = (
   });
 
   const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);
+  const totalLowPriority = head.reduce(
+    (a, h) => a + (h.lowPriorityBytes ?? 0),
+    0,
+  );
   const ignoredNote =
-    totalIgnored > 0 ?
+    (totalIgnored > 0 ?
       `\n<sub>${formatBytes(totalIgnored)} matched ignore-url-patterns and is not counted</sub>`
-    : "";
+    : "") +
+    (totalLowPriority > 0 ?
+      `\n<sub>${formatBytes(totalLowPriority)} was low-priority fetches (ignore-low-priority) and is not counted</sub>`
+    : "");
 
   // bases that could not be measured: noted once rather than in every cell
   const baseErrorNotes = bases

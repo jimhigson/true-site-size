@@ -31782,8 +31782,13 @@ ${entries.join("\n\n")}
     return [...divider, segmentRow, ...cumulative];
   });
   const totalIgnored = head.reduce((a, h) => a + (h.ignoredBytes ?? 0), 0);
-  const ignoredNote = totalIgnored > 0 ? `
-<sub>${formatBytes(totalIgnored)} matched ignore-url-patterns and is not counted</sub>` : "";
+  const totalLowPriority = head.reduce(
+    (a, h) => a + (h.lowPriorityBytes ?? 0),
+    0
+  );
+  const ignoredNote = (totalIgnored > 0 ? `
+<sub>${formatBytes(totalIgnored)} matched ignore-url-patterns and is not counted</sub>` : "") + (totalLowPriority > 0 ? `
+<sub>${formatBytes(totalLowPriority)} was low-priority fetches (ignore-low-priority) and is not counted</sub>` : "");
   const baseErrorNotes = bases.filter((b) => !b.results).map(
     (b) => `
 > \u26A0\uFE0F base \`${b.ref}\` could not be measured${b.error ? ` - ${b.error}` : ""}`
@@ -32100,6 +32105,7 @@ var serve = (dir, compression, level = null) => new Promise((resolve2) => {
 import { existsSync as existsSync2, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as join2 } from "node:path";
+var lowPriorities = /* @__PURE__ */ new Set(["Low", "VeryLow"]);
 var chromeCandidates = [
   process.env["CHROME_PATH"],
   "/usr/bin/google-chrome",
@@ -32205,7 +32211,8 @@ var runJourney = async (steps, {
   markTimeoutMs,
   stepTimeoutMs,
   settleTimeoutMs,
-  ignorePatterns
+  ignorePatterns,
+  ignoreLowPriority
 }) => {
   const chrome = await launchChrome();
   const client = await (0, import_chrome_remote_interface.default)({ port: chrome.port });
@@ -32255,15 +32262,18 @@ var runJourney = async (steps, {
     let requests = 0;
     let failed = 0;
     let ignoredBytes = 0;
+    let lowPriorityBytes = 0;
     let lastActivity = Date.now();
     let segmentStart = Date.now();
     let requestLog = [];
     const inflight = /* @__PURE__ */ new Map();
     const isIgnored = (url) => ignoreRes.some((re) => re.test(url));
     const keyOf = (sessionId, requestId) => `${sessionId ?? "page"}:${requestId}`;
-    const countAs = (url, byteCount, note) => {
-      const ignored = isIgnored(url);
-      if (ignored) {
+    const countAs = ({ url, lowPriority }, byteCount, note) => {
+      const ignored = lowPriority || isIgnored(url);
+      if (lowPriority) {
+        lowPriorityBytes += byteCount;
+      } else if (ignored) {
         ignoredBytes += byteCount;
       } else {
         bytes += byteCount;
@@ -32274,16 +32284,24 @@ var runJourney = async (steps, {
         bytes: byteCount,
         atMs: Date.now() - segmentStart,
         ...ignored && { ignored: true },
+        ...lowPriority && { lowPriority: true },
         ...note && { note }
       });
     };
-    const onRequestWillBeSent = ({ requestId, request }, sessionId) => {
+    const onRequestWillBeSent = ({
+      requestId,
+      request,
+      type
+    }, sessionId) => {
       if (request.url.startsWith("data:")) return;
       const key = keyOf(sessionId, requestId);
       inflight.set(key, {
         url: request.url,
         responded: false,
-        dataBytes: 0
+        dataBytes: 0,
+        // only fetch() - chrome gives other resource types (eg offscreen
+        // images) low priority of its own accord, not as the page's choice
+        lowPriority: ignoreLowPriority && type === "Fetch" && lowPriorities.has(request.initialPriority ?? "")
       });
       lastActivity = Date.now();
     };
@@ -32295,7 +32313,7 @@ var runJourney = async (steps, {
       const entry = inflight.get(key);
       if (!entry) return;
       inflight.delete(key);
-      countAs(entry.url, encodedDataLength);
+      countAs(entry, encodedDataLength);
       lastActivity = Date.now();
     };
     const onLoadingFailed = ({ requestId }, sessionId) => {
@@ -32333,7 +32351,7 @@ var runJourney = async (steps, {
       for (const [key, entry] of inflight) {
         if (entry.responded) {
           inflight.delete(key);
-          countAs(entry.url, entry.dataBytes, "no loadingFinished event");
+          countAs(entry, entry.dataBytes, "no loadingFinished event");
         }
       }
     };
@@ -32342,6 +32360,7 @@ var runJourney = async (steps, {
       requests = 0;
       failed = 0;
       ignoredBytes = 0;
+      lowPriorityBytes = 0;
       requestLog = [];
       inflight.clear();
       segmentStart = Date.now();
@@ -32496,6 +32515,7 @@ var runJourney = async (steps, {
             requests,
             failedRequests: failed,
             ignoredBytes,
+            lowPriorityBytes,
             timeToMarkMs: Math.round(Date.now() - segmentStart),
             requestLog: [...requestLog],
             ...step.emoji && { emoji: step.emoji }
@@ -32550,7 +32570,8 @@ var measure = async (steps, {
   markTimeoutMs,
   stepTimeoutMs,
   settleTimeoutMs,
-  ignorePatterns
+  ignorePatterns,
+  ignoreLowPriority
 }) => {
   const visits = splitIntoVisits(steps);
   const runsByVisit = visits.map(() => []);
@@ -32562,7 +32583,8 @@ var measure = async (steps, {
           markTimeoutMs,
           stepTimeoutMs,
           settleTimeoutMs,
-          ignorePatterns
+          ignorePatterns,
+          ignoreLowPriority
         })
       );
     }
@@ -32720,6 +32742,8 @@ var main = async () => {
     settleTimeoutMs: Number(input("settle-timeout-ms", "30000")),
     timeoutMs: Number(input("timeout-ms", "900000")),
     ignorePatterns: JSON.parse(input("ignore-url-patterns", "[]")),
+    // fetch()es made with priority "low" are logged but not counted
+    ignoreLowPriority: input("ignore-low-priority", "false") === "true",
     settleMs: Number(input("settle-ms", "1500")),
     markTimeoutMs: Number(input("mark-timeout-ms", "60000")),
     baseRefs: JSON.parse(input("base-refs", "[]")),
@@ -32772,10 +32796,10 @@ var main = async () => {
         `[true-site-size] ${label} / ${r.name}: ${formatBytes(r.bytes)} over ${r.requests} requests, mark at ${formatDuration(r.timeToMarkMs)} (per-request breakdown follows, largest first)`
       );
       const sorted = [...r.requestLog ?? []].sort((a, b) => b.bytes - a.bytes);
-      for (const { url, bytes, atMs, ignored } of sorted) {
+      for (const { url, bytes, atMs, ignored, lowPriority } of sorted) {
         if (ignored) {
           console.log(
-            `  ${formatBytes(bytes).padStart(9)}  at ${String(atMs).padStart(6)}ms  ${url}  [ignored - not counted]`
+            `  ${formatBytes(bytes).padStart(9)}  at ${String(atMs).padStart(6)}ms  ${url}  [${lowPriority ? "low priority" : "ignored"} - not counted]`
           );
           continue;
         }
@@ -32807,6 +32831,7 @@ var main = async () => {
       runs: config.runs,
       settleMs: config.settleMs,
       ignorePatterns: config.ignorePatterns,
+      ignoreLowPriority: config.ignoreLowPriority,
       serveDir: config.serveDir,
       buildCommand: config.buildCommand,
       // part of what's measured, and bumping it re-keys the cache so the

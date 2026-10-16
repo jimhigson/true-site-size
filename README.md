@@ -228,6 +228,12 @@ Measures taken so the numbers are reproducible and honest:
 - requests matching `ignore-url-patterns` are excluded from counts but shown,
   tagged, in the log — for endpoints whose response size legitimately varies
   (live database reads, feeds)
+- with `ignore-low-priority`, `fetch()` requests the page makes with
+  `priority: "low"` are likewise excluded but shown, tagged `low priority` —
+  for speculative preloads of assets a later screen may need. An app marks a
+  preload simply by fetching it with `fetch(url, { priority: "low" })`. Only
+  `fetch()` requests qualify: chrome gives some other resource types (eg
+  offscreen images) a low priority of its own accord, and those still count
 - every wait is capped (`mark-timeout-ms`, `step-timeout-ms`,
   `settle-timeout-ms` — which names the in-flight urls when an app never
   stops requesting) and a whole-action watchdog (`timeout-ms`) guarantees a
@@ -294,6 +300,7 @@ Only fully-successful base measurements are cached.
 | `spread-tolerance-bytes` | `512` | spread treated as h2 protocol noise |
 | `minimum-change-threshold` | `1` | deltas below this many bytes show as unchanged (as compressed-size-action) |
 | `ignore-url-patterns` | `[]` | JSON array of regexes excluded from counts |
+| `ignore-low-priority` | `false` | exclude `fetch()`es made with `priority: "low"` (speculative preloads) from counts |
 | `settle-ms` | `1500` | network quiet required after each mark |
 | `mark-timeout-ms` | `60000` | per-row wait for the mark |
 | `step-timeout-ms` | `20000` | per-step cap, eg a click target appearing |

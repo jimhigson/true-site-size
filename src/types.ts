@@ -13,8 +13,11 @@ export interface RequestLogEntry {
   bytes: number;
   /** ms after the segment start at which the request completed */
   atMs: number;
-  /** present (true) when the url matched an ignore pattern - logged, not counted */
+  /** present (true) when the request is excluded from counts (an ignore
+   *  pattern or a low-priority fetch) - logged, not counted */
   ignored?: boolean;
+  /** present (true) when excluded as a low-priority fetch (ignore-low-priority) */
+  lowPriority?: boolean;
   /** an explanatory note (eg a zombie request drained without loadingFinished) */
   note?: string;
 }
@@ -35,6 +38,8 @@ export interface RowResult {
   failedRequests?: number;
   /** bytes from ignore-pattern-matched requests (logged, not counted) */
   ignoredBytes?: number;
+  /** bytes from low-priority fetches under ignore-low-priority (logged, not counted) */
+  lowPriorityBytes?: number;
   /** ms from segment start to the row's mark + settle */
   timeToMarkMs?: number;
   /** the per-request log for this row */
@@ -140,6 +145,7 @@ export interface Config {
   settleTimeoutMs: number;
   timeoutMs: number;
   ignorePatterns: string[];
+  ignoreLowPriority: boolean;
   settleMs: number;
   markTimeoutMs: number;
   baseRefs: string[];

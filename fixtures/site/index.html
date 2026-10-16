@@ -16,6 +16,9 @@
       // a request the selftest excludes via ignore-url-patterns - mimics a
       // live api call whose response size varies over time
       await fetch("./varies.json");
+      // a speculative preload, not awaited - the selftest excludes it via
+      // ignore-low-priority
+      fetch("./preload.json", { priority: "low" });
       performance.mark("fixture-ready");
 
       // post-mark straggler: must be included by the settle window

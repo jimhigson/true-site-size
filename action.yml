@@ -34,6 +34,13 @@ inputs:
       counts (still shown in the run-log breakdown, tagged ignored) - for
       endpoints whose response size legitimately varies, eg live db reads.
     default: "[]"
+  ignore-low-priority:
+    description: >
+      exclude fetch() requests the page makes with priority "low" from byte
+      counts (still shown in the run-log breakdown, tagged low priority) - for
+      speculative preloads of assets a later screen may need. Only fetch()
+      qualifies; other resource types chrome lowers on its own still count.
+    default: "false"
   step-timeout-ms:
     description: per-step timeout, eg waiting for a click target to appear
     default: "20000"
@@ -169,6 +176,7 @@ runs:
         INPUT_SCENARIOS: ${{ inputs.scenarios }}
         INPUT_JOURNEY: ${{ inputs.journey }}
         INPUT_IGNORE_URL_PATTERNS: ${{ inputs.ignore-url-patterns }}
+        INPUT_IGNORE_LOW_PRIORITY: ${{ inputs.ignore-low-priority }}
         INPUT_STEP_TIMEOUT_MS: ${{ inputs.step-timeout-ms }}
         INPUT_SETTLE_TIMEOUT_MS: ${{ inputs.settle-timeout-ms }}
         INPUT_TIMEOUT_MS: ${{ inputs.timeout-ms }}

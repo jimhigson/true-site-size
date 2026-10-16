@@ -26,6 +26,7 @@ jobs:
           # exercise the multi-ref base path (fetch + worktree + per-ref column)
           base-refs: '["main"]'
           ignore-url-patterns: '["varies\\.json$"]'
+          ignore-low-priority: "true"
           # the startAgain visit reloads the same page cold - its row should
           # re-transfer the full page bytes rather than hit the http cache
           journey: |

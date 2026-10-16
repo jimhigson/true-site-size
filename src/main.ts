@@ -105,6 +105,8 @@ const main = async () => {
     settleTimeoutMs: Number(input("settle-timeout-ms", "30000")),
     timeoutMs: Number(input("timeout-ms", "900000")),
     ignorePatterns: JSON.parse(input("ignore-url-patterns", "[]")),
+    // fetch()es made with priority "low" are logged but not counted
+    ignoreLowPriority: input("ignore-low-priority", "false") === "true",
     settleMs: Number(input("settle-ms", "1500")),
     markTimeoutMs: Number(input("mark-timeout-ms", "60000")),
     baseRefs: JSON.parse(input("base-refs", "[]")),
@@ -170,10 +172,10 @@ const main = async () => {
         `[true-site-size] ${label} / ${r.name}: ${formatBytes(r.bytes)} over ${r.requests} requests, mark at ${formatDuration(r.timeToMarkMs)} (per-request breakdown follows, largest first)`,
       );
       const sorted = [...(r.requestLog ?? [])].sort((a, b) => b.bytes - a.bytes);
-      for (const { url, bytes, atMs, ignored } of sorted) {
+      for (const { url, bytes, atMs, ignored, lowPriority } of sorted) {
         if (ignored) {
           console.log(
-            `  ${formatBytes(bytes).padStart(9)}  at ${String(atMs).padStart(6)}ms  ${url}  [ignored - not counted]`,
+            `  ${formatBytes(bytes).padStart(9)}  at ${String(atMs).padStart(6)}ms  ${url}  [${lowPriority ? "low priority" : "ignored"} - not counted]`,
           );
           continue;
         }
@@ -226,6 +228,7 @@ const main = async () => {
         runs: config.runs,
         settleMs: config.settleMs,
         ignorePatterns: config.ignorePatterns,
+        ignoreLowPriority: config.ignoreLowPriority,
         serveDir: config.serveDir,
         buildCommand: config.buildCommand,
         // part of what's measured, and bumping it re-keys the cache so the

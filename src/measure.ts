@@ -12,7 +12,12 @@ import type { Config, JourneyStep, RequestLogEntry, RowResult } from "./types.ts
 /** the measurement options runJourney needs (a subset of the action config) */
 type JourneyOptions = Pick<
   Config,
-  "settleMs" | "markTimeoutMs" | "stepTimeoutMs" | "settleTimeoutMs" | "ignorePatterns"
+  | "settleMs"
+  | "markTimeoutMs"
+  | "stepTimeoutMs"
+  | "settleTimeoutMs"
+  | "ignorePatterns"
+  | "ignoreLowPriority"
 >;
 /** measure runs a journey several times: the journey options plus the count */
 type MeasureOptions = JourneyOptions & Pick<Config, "runs">;
@@ -22,7 +27,12 @@ interface InflightEntry {
   url: string;
   responded: boolean;
   dataBytes: number;
+  /** a fetch() the page made with priority "low" - see ignoreLowPriority */
+  lowPriority: boolean;
 }
+
+/** chrome's initial priorities that a fetch() with priority "low" can get */
+const lowPriorities = new Set(["Low", "VeryLow"]);
 
 const chromeCandidates = [
   process.env["CHROME_PATH"],
@@ -154,6 +164,8 @@ const keyDefs: Record<
  *
  * Requests whose urls match ignorePatterns are logged but not counted - for
  * endpoints whose response size legitimately varies (eg live db reads).
+ * With ignoreLowPriority, fetch() requests made with priority "low" are also
+ * logged but not counted - for speculative preloads of things not yet needed.
  */
 export const runJourney = async (
   steps: JourneyStep[],
@@ -163,6 +175,7 @@ export const runJourney = async (
     stepTimeoutMs,
     settleTimeoutMs,
     ignorePatterns,
+    ignoreLowPriority,
   }: JourneyOptions,
 ): Promise<RowResult[]> => {
   const chrome = await launchChrome();
@@ -238,6 +251,7 @@ export const runJourney = async (
     let requests = 0;
     let failed = 0;
     let ignoredBytes = 0;
+    let lowPriorityBytes = 0;
     let lastActivity = Date.now();
     let segmentStart = Date.now();
     let requestLog: RequestLogEntry[] = [];
@@ -251,9 +265,15 @@ export const runJourney = async (
     const keyOf = (sessionId: string | undefined, requestId: string) =>
       `${sessionId ?? "page"}:${requestId}`;
 
-    const countAs = (url: string, byteCount: number, note?: string) => {
-      const ignored = isIgnored(url);
-      if (ignored) {
+    const countAs = (
+      { url, lowPriority }: InflightEntry,
+      byteCount: number,
+      note?: string,
+    ) => {
+      const ignored = lowPriority || isIgnored(url);
+      if (lowPriority) {
+        lowPriorityBytes += byteCount;
+      } else if (ignored) {
         ignoredBytes += byteCount;
       } else {
         bytes += byteCount;
@@ -264,12 +284,21 @@ export const runJourney = async (
         bytes: byteCount,
         atMs: Date.now() - segmentStart,
         ...(ignored && { ignored: true }),
+        ...(lowPriority && { lowPriority: true }),
         ...(note && { note }),
       });
     };
 
     const onRequestWillBeSent = (
-      { requestId, request }: { requestId: string; request: { url: string } },
+      {
+        requestId,
+        request,
+        type,
+      }: {
+        requestId: string;
+        request: { url: string; initialPriority?: string };
+        type?: string;
+      },
       sessionId: string | undefined,
     ) => {
       if (request.url.startsWith("data:")) return;
@@ -278,6 +307,12 @@ export const runJourney = async (
         url: request.url,
         responded: false,
         dataBytes: 0,
+        // only fetch() - chrome gives other resource types (eg offscreen
+        // images) low priority of its own accord, not as the page's choice
+        lowPriority:
+          ignoreLowPriority &&
+          type === "Fetch" &&
+          lowPriorities.has(request.initialPriority ?? ""),
       });
       lastActivity = Date.now();
     };
@@ -292,7 +327,7 @@ export const runJourney = async (
       const entry = inflight.get(key);
       if (!entry) return;
       inflight.delete(key);
-      countAs(entry.url, encodedDataLength);
+      countAs(entry, encodedDataLength);
       lastActivity = Date.now();
     };
     const onLoadingFailed = (
@@ -342,7 +377,7 @@ export const runJourney = async (
       for (const [key, entry] of inflight) {
         if (entry.responded) {
           inflight.delete(key);
-          countAs(entry.url, entry.dataBytes, "no loadingFinished event");
+          countAs(entry, entry.dataBytes, "no loadingFinished event");
         }
       }
     };
@@ -352,6 +387,7 @@ export const runJourney = async (
       requests = 0;
       failed = 0;
       ignoredBytes = 0;
+      lowPriorityBytes = 0;
       requestLog = [];
       inflight.clear();
       segmentStart = Date.now();
@@ -536,6 +572,7 @@ export const runJourney = async (
             requests,
             failedRequests: failed,
             ignoredBytes,
+            lowPriorityBytes,
             timeToMarkMs: Math.round(Date.now() - segmentStart),
             requestLog: [...requestLog],
             ...(step.emoji && { emoji: step.emoji }),
@@ -621,6 +658,7 @@ export const measure = async (
     stepTimeoutMs,
     settleTimeoutMs,
     ignorePatterns,
+    ignoreLowPriority,
   }: MeasureOptions,
 ): Promise<RowResult[]> => {
   const visits = splitIntoVisits(steps);
@@ -634,6 +672,7 @@ export const measure = async (
           stepTimeoutMs,
           settleTimeoutMs,
           ignorePatterns,
+          ignoreLowPriority,
         }),
       );
     }
