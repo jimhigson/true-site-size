@@ -32152,6 +32152,7 @@ var chartFor = (title, series, points, xLabels, tagsAt) => {
 ---
 config:
   xyChart:
+    width: ${Math.max(700, points.length * 24)}
     height: 360
     xAxis:
       labelRotation: 45
