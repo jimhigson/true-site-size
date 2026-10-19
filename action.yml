@@ -155,6 +155,24 @@ inputs:
       files across base and head despite content hashes (default matches
       vite/rollup style "-D4zXn_7K." hashes). Empty string disables.
     default: "(-[a-zA-Z0-9_-]{8})\\."
+  history-branch:
+    description: >
+      orphan branch (created on first write) that records each commit's sizes,
+      charted in the comment as a timeline. A push to the default branch
+      appends its head (the workflow needs contents: write); PR runs only read
+      it, and chart their head as the newest point. Empty disables history.
+    default: ""
+  history-length:
+    description: how many recorded commits the history chart shows
+    default: "30"
+  backfill:
+    description: >
+      measure a range of past commits into history-branch instead of the
+      usual head-vs-base report - a range "A..B" (eg "v26.0.0..main") of
+      first-parent commits, or a count N of the default branch's latest.
+      Newest first; commits already recorded are skipped and each is pushed as
+      measured, so rerunning continues a backfill that ran out of timeout-ms.
+    default: ""
   github-token:
     description: token used to post the PR comment
     default: ${{ github.token }}
@@ -198,4 +216,7 @@ runs:
         INPUT_STRIP_HASH: ${{ inputs.strip-hash }}
         INPUT_SPREAD_TOLERANCE_BYTES: ${{ inputs.spread-tolerance-bytes }}
         INPUT_MINIMUM_CHANGE_THRESHOLD: ${{ inputs.minimum-change-threshold }}
+        INPUT_HISTORY_BRANCH: ${{ inputs.history-branch }}
+        INPUT_HISTORY_LENGTH: ${{ inputs.history-length }}
+        INPUT_BACKFILL: ${{ inputs.backfill }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}

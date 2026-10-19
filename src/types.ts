@@ -157,6 +157,13 @@ export interface Config {
   prNumber: string;
   collapsibleBreakdown: boolean;
   measureDisk: boolean;
+  /** orphan branch holding the per-commit history; empty disables history */
+  historyBranch: string;
+  /** how many recorded commits the history chart shows */
+  historyLength: number;
+  /** a commit range (A..B) or count (N) to measure into the history, instead
+   *  of a normal head-vs-base run; empty for a normal run */
+  backfill: string;
   token: string;
 }
 
@@ -172,6 +179,40 @@ export interface CommentOptions {
   measureDisk?: boolean;
   /** why no base was measured, when the workspace ruled the comparison out */
   baseSkippedReason?: string | null;
+  /** the rendered history charts and table, or empty */
+  historySection?: string;
+}
+
+/** one row of a recorded commit: just its size, not its request log */
+export interface HistoryRow {
+  name: string;
+  /** counted wire bytes; absent when the row errored */
+  bytes?: number;
+  visit?: number;
+  visitName?: string;
+  emoji?: string;
+  error?: string;
+}
+
+/**
+ * one measured commit in the history branch. Entries are only comparable
+ * under the same configHash - a different journey or compression measures
+ * something else
+ */
+export interface HistoryEntry {
+  sha: string;
+  /** committer date, ISO 8601 in UTC - the history's sort order */
+  date: string;
+  /** the commit message's first line */
+  subject: string;
+  /** the PR the commit merged, read from its subject, or null */
+  pr: number | null;
+  configHash: string;
+  rows: HistoryRow[];
+  /** whole-site disk total, or null when not measured */
+  disk: number | null;
+  /** set when the commit could not be built or measured at all */
+  error?: string;
 }
 
 /** the options object passed to postComment */

@@ -31599,7 +31599,7 @@ var require_chrome_remote_interface = __commonJS({
 
 // src/main.ts
 import { createHash as createHash2 } from "node:crypto";
-import { execSync as execSync2 } from "node:child_process";
+import { execSync as execSync3 } from "node:child_process";
 import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync2, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join as join3, resolve } from "node:path";
@@ -31636,7 +31636,8 @@ var formatComment = (head, bases, {
   collapsibleBreakdown = true,
   headDisk = null,
   measureDisk = true,
-  baseSkippedReason = null
+  baseSkippedReason = null,
+  historySection = ""
 }) => {
   const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
   const fileOf = (url) => {
@@ -31874,7 +31875,7 @@ True wire bytes from cold cache to \`performance.mark\`, network settled.
 ${rows.join("\n")}
 ${spreadNote}${ignoredNote}${baseErrorNotes}${duplicateNotes}${comparedNote}
 ${detailsBlocks}
-${diskSection}
+${diskSection}${historySection}
 ${runUrl ? `
 <sub>\u{1F4CB} per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
 <sub>measured by [true-site-size](https://github.com/jimhigson/true-site-size)</sub>
@@ -31915,6 +31916,321 @@ var postComment = async (body, {
   if (!res.ok) {
     throw new Error(`posting comment failed: ${res.status} ${await res.text()}`);
   }
+};
+
+// src/history.ts
+import { execSync as execSync2 } from "node:child_process";
+
+// src/run.ts
+import { execSync } from "node:child_process";
+var run = (cmd, cwd) => {
+  console.log(`[true-site-size] $ ${cmd} (in ${cwd})`);
+  execSync(cmd, { cwd, stdio: "inherit" });
+};
+var runQuiet = (cmd, cwd) => execSync(cmd, { cwd, stdio: "pipe" }).toString().trim();
+
+// src/history.ts
+var historyRef = "refs/true-site-size/history";
+var historyFileFor = (commentKey) => `history${commentKey ? `-${commentKey.replace(/[^\w.-]+/g, "_")}` : ""}.json`;
+var gitOut = (cmd, cwd, input2) => execSync2(cmd, {
+  cwd,
+  input: input2,
+  stdio: "pipe",
+  maxBuffer: 256 * 1024 * 1024
+}).toString().trim();
+var fetchHistoryTip = (workspace, branch) => {
+  try {
+    runQuiet(
+      `git fetch --depth=1 --no-tags origin +refs/heads/${branch}:${historyRef}`,
+      workspace
+    );
+    return runQuiet(`git rev-parse ${historyRef}`, workspace);
+  } catch {
+    return null;
+  }
+};
+var entriesAt = (workspace, tip, file) => {
+  if (!tip) return [];
+  try {
+    return JSON.parse(gitOut(`git show ${tip}:${file}`, workspace)).entries;
+  } catch {
+    return [];
+  }
+};
+var readHistory = (workspace, branch, file) => entriesAt(workspace, fetchHistoryTip(workspace, branch), file);
+var mergeEntries = (existing, added) => {
+  const keyOf = (e) => `${e.sha}:${e.configHash}`;
+  const byKey = new Map(existing.map((e) => [keyOf(e), e]));
+  for (const e of added) byKey.set(keyOf(e), e);
+  return [...byKey.values()].sort((a, z) => a.date.localeCompare(z.date));
+};
+var serialise = (entries) => `{"version":1,"entries":[
+${entries.map((e) => JSON.stringify(e)).join(",\n")}
+]}
+`;
+var botIdentity = {
+  GIT_AUTHOR_NAME: "github-actions[bot]",
+  GIT_AUTHOR_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com",
+  GIT_COMMITTER_NAME: "github-actions[bot]",
+  GIT_COMMITTER_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
+};
+var appendHistory = (workspace, branch, file, added) => {
+  const attempts = 5;
+  for (let attempt = 1; ; attempt++) {
+    const tip = fetchHistoryTip(workspace, branch);
+    const entries = mergeEntries(entriesAt(workspace, tip, file), added);
+    const blob = gitOut("git hash-object -w --stdin", workspace, serialise(entries));
+    const others = tip ? gitOut(`git ls-tree ${tip}`, workspace).split("\n").filter((line) => line && !line.endsWith(`	${file}`)) : [];
+    const tree = gitOut(
+      "git mktree",
+      workspace,
+      [...others, `100644 blob ${blob}	${file}`].join("\n") + "\n"
+    );
+    const message = `record ${added.map((e) => e.sha.slice(0, 9)).join(", ")} in ${file}`;
+    const commit = execSync2(
+      `git commit-tree ${tree}${tip ? ` -p ${tip}` : ""} -m "${message}"`,
+      { cwd: workspace, stdio: "pipe", env: { ...process.env, ...botIdentity } }
+    ).toString().trim();
+    try {
+      runQuiet(`git push origin ${commit}:refs/heads/${branch}`, workspace);
+      console.log(`[true-site-size] history: ${message} (${branch})`);
+      return;
+    } catch (e) {
+      if (attempt >= attempts) {
+        throw new Error(
+          `could not push the history branch ${branch} after ${attempts} attempts (does the workflow grant contents: write?): ${e.message}`
+        );
+      }
+      console.warn(
+        `[true-site-size] history push rejected (attempt ${attempt}/${attempts}) - re-reading the branch and retrying`
+      );
+    }
+  }
+};
+var prOfSubject = (subject) => {
+  const n = /\(#(\d+)\)\s*$/.exec(subject)?.[1] ?? /^Merge pull request #(\d+)/.exec(subject)?.[1];
+  return n ? Number(n) : null;
+};
+var historyEntry = (workspace, sha, configHash, measured) => {
+  const [epoch = "0", subject = ""] = runQuiet(
+    `git show -s --format=%ct%n%s ${sha}`,
+    workspace
+  ).split("\n");
+  const date = new Date(Number(epoch) * 1e3).toISOString();
+  const base = { sha, date, subject, pr: prOfSubject(subject), configHash };
+  if ("error" in measured) {
+    return { ...base, rows: [], disk: null, error: measured.error };
+  }
+  const rows = measured.results.map(
+    ({ name, bytes, visit, visitName, emoji, error }) => ({
+      name,
+      ...error ? { error } : { bytes },
+      ...visit !== void 0 && { visit },
+      ...visitName !== void 0 && { visitName },
+      ...emoji !== void 0 && { emoji }
+    })
+  );
+  return { ...base, rows, disk: measured.disk?.total ?? null };
+};
+var remoteTags = (workspace) => {
+  const tags = /* @__PURE__ */ new Map();
+  let listing = "";
+  try {
+    listing = gitOut("git ls-remote --tags origin", workspace);
+  } catch {
+    return tags;
+  }
+  const lines = listing.split("\n").map((l) => l.split("	"));
+  const peeled = new Set(
+    lines.filter(([, ref]) => ref?.endsWith("^{}")).map(([, ref]) => ref.slice(0, -3))
+  );
+  for (const [sha, ref] of lines) {
+    if (!ref || peeled.has(ref) && !ref.endsWith("^{}")) continue;
+    const name = ref.replace(/^refs\/tags\//, "").replace(/\^\{\}$/, "");
+    tags.set(sha, [...tags.get(sha) ?? [], name]);
+  }
+  return tags;
+};
+var backfillCommits = (workspace, spec, defaultBranch) => {
+  const shallow = runQuiet("git rev-parse --is-shallow-repository", workspace) === "true";
+  run(
+    `git fetch --tags${shallow ? " --unshallow" : ""} origin +refs/heads/${defaultBranch}:refs/remotes/origin/${defaultBranch}`,
+    workspace
+  );
+  const resolve2 = (name) => {
+    for (const candidate of [name, `origin/${name}`]) {
+      try {
+        return runQuiet(`git rev-parse --verify --quiet ${candidate}^{commit}`, workspace);
+      } catch {
+      }
+    }
+    throw new Error(`backfill: cannot resolve "${name}" to a commit`);
+  };
+  const trimmed = spec.trim();
+  const revs = /^\d+$/.test(trimmed) ? `--max-count=${trimmed} origin/${defaultBranch}` : (() => {
+    const [from, to] = trimmed.split("..");
+    if (!from || !to) {
+      throw new Error(
+        `backfill: expected a range "A..B" or a commit count, got "${spec}"`
+      );
+    }
+    return `${resolve2(from)}..${resolve2(to)}`;
+  })();
+  return gitOut(`git rev-list --first-parent ${revs}`, workspace).split("\n").filter(Boolean);
+};
+
+// src/historyChart.ts
+var palette = [
+  "#8b5cf6",
+  "#f97316",
+  "#3b82f6",
+  "#eab308",
+  "#22c55e",
+  "#ef4444",
+  "#a16207",
+  "#64748b",
+  "#ec4899",
+  "#14b8a6"
+];
+var mq = (s) => `"${s.replaceAll('"', "'")}"`;
+var cell = (s) => s.replaceAll("|", "\\|").replaceAll("\n", " ");
+var truncate = (s, n) => s.length > n ? `${s.slice(0, n - 1).trimEnd()}\u2026` : s;
+var round1 = (n) => Math.round(n * 10) / 10;
+var signedPct = (n) => `${n > 0 ? "+" : n < 0 ? "-" : "\xB1"}${Math.abs(n).toFixed(1)}%`;
+var seriesFor = (newest) => {
+  const visits = [...new Set(newest.rows.map((r) => r.visit ?? 0))];
+  const totals = visits.map((v) => {
+    const names = newest.rows.filter((r) => (r.visit ?? 0) === v).map((r) => r.name);
+    const visitName = newest.rows.find((r) => (r.visit ?? 0) === v)?.visitName;
+    return {
+      name: `total${visitName ? ` (${visitName})` : visits.length > 1 ? ` (visit ${v + 1})` : ""}`,
+      valueOf: (e) => {
+        const bytes = names.map((n) => e.rows.find((r) => r.name === n)?.bytes);
+        return bytes.every((b) => b !== void 0) ? bytes.reduce((sum, b) => sum + b, 0) : void 0;
+      }
+    };
+  });
+  if (newest.disk !== null) {
+    totals.push({ name: "\u{1F4BE} on disk", valueOf: (e) => e.disk ?? void 0 });
+  }
+  const rows = newest.rows.map((r) => ({
+    name: `${r.emoji ? `${r.emoji} ` : ""}${r.name}`,
+    valueOf: (e) => e.rows.find((x) => x.name === r.name)?.bytes
+  }));
+  return { totals, rows };
+};
+var chartFor = (title, series, points, xLabels, tagsAt) => {
+  const plotted = series.map((s) => {
+    const raw = points.map(s.valueOf);
+    const ref = raw.find((v) => v !== void 0);
+    let last = 0;
+    const pcts = raw.map((v) => {
+      if (v !== void 0 && ref) last = round1((v - ref) / ref * 100);
+      return last;
+    });
+    return { s, raw, pcts };
+  });
+  const all = plotted.flatMap((p) => p.pcts);
+  const lo = Math.min(0, ...all);
+  const hi = Math.max(0, ...all);
+  const pad = Math.max((hi - lo) * 0.1, 0.5);
+  const yMin = Math.floor(lo - pad);
+  const yMax = Math.ceil(hi + pad);
+  const lines = plotted.map(({ s, raw, pcts }, si) => {
+    const values = pcts.map((pct, i) => {
+      const labels = [
+        // tags label the first line only - once per chart is enough to read
+        si === 0 && tagsAt[i] ? `\u{1F3F7}\uFE0F ${tagsAt[i]}` : "",
+        raw[i] === void 0 ? "\u2717" : "",
+        i === pcts.length - 1 ? signedPct(pct) : ""
+      ].filter(Boolean);
+      return labels.length ? `${pct} ${mq(labels.join(" "))}` : `${pct}`;
+    });
+    return `  line ${mq(s.name)} [${values.join(", ")}]`;
+  });
+  return `\`\`\`mermaid
+---
+config:
+  xyChart:
+    height: 360
+    xAxis:
+      labelRotation: 45
+  themeVariables:
+    xyChart:
+      plotColorPalette: "${palette.slice(0, series.length).join(", ")}"
+---
+xychart-beta
+  title ${mq(title)}
+  x-axis [${xLabels.map(mq).join(", ")}]
+  y-axis ${mq(`% change since ${xLabels[0]}`)} ${yMin} --> ${yMax}
+${lines.join("\n")}
+\`\`\``;
+};
+var formatHistory = (entries, head, opts) => {
+  const comparable = entries.filter(
+    (e) => e.configHash === opts.configHash && e.sha !== head?.sha
+  );
+  const otherConfig = new Set(
+    entries.filter((e) => e.configHash !== opts.configHash).map((e) => e.sha)
+  ).size;
+  const recorded = comparable.slice(-opts.length);
+  const points = head ? [...recorded, head] : recorded;
+  const heading = `### \u{1F4C8} history${opts.commentKey ? ` (${opts.commentKey})` : ""}`;
+  const otherConfigNote = otherConfig ? `
+<sub>${otherConfig} recorded commit(s) measured under a different config (journey, compression\u2026) are not comparable and not shown - backfill to re-measure them</sub>` : "";
+  const newest = points.findLast((e) => e.rows.length > 0);
+  if (points.length < 2 || !newest) {
+    return `
+${heading}
+
+<sub>${comparable.length} commit(s) on \`${opts.defaultBranch}\` recorded so far - the chart appears once there are two points to join. Backfill to seed it.</sub>${otherConfigNote}
+`;
+  }
+  const tagsAt = points.map(
+    (e) => e === head ? void 0 : opts.tags.get(e.sha)?.join(", ")
+  );
+  const xLabels = points.map(
+    (e, i) => e === head ? opts.headLabel : tagsAt[i] ? `\u{1F3F7}\uFE0F ${tagsAt[i]}` : e.pr !== null ? `#${e.pr}` : e.sha.slice(0, 7)
+  );
+  const { totals, rows } = seriesFor(newest);
+  const charts = [
+    chartFor("totals", totals, points, xLabels, tagsAt),
+    ...rows.length > totals.filter((t) => t.name !== "\u{1F4BE} on disk").length ? [chartFor("per row", rows, points, xLabels, tagsAt)] : []
+  ];
+  const columns = [...totals, ...rows];
+  const tableRows = [...points].reverse().map((e) => {
+    const commitUrl = e === head ? null : opts.commitUrl(e.sha);
+    const commit = e === head ? `*${opts.headLabel}*` : commitUrl ? `[\`${e.sha.slice(0, 7)}\`](${commitUrl})` : `\`${e.sha.slice(0, 7)}\``;
+    const prUrl = e.pr !== null ? opts.prUrl(e.pr) : null;
+    const pr = e.pr === null ? "" : prUrl ? `[#${e.pr}](${prUrl})` : `#${e.pr}`;
+    const tags = e === head ? "" : (opts.tags.get(e.sha) ?? []).map((t) => `\u{1F3F7}\uFE0F ${t}`).join(" ");
+    const message = e === head ? "" : cell(truncate(e.subject.replace(/\s*\(#\d+\)\s*$/, ""), 60));
+    const values = columns.map((c) => {
+      const v = c.valueOf(e);
+      return v === void 0 ? "\u2717" : formatBytes(v);
+    });
+    return `| ${[commit, pr, [tags, message].filter(Boolean).join(" "), ...values].join(" | ")} |`;
+  });
+  const header = ["commit", "PR", "message", ...columns.map((c) => c.name)];
+  const errored = points.filter((e) => e.error || e.rows.some((r) => r.error));
+  const erroredNote = errored.length ? `
+<sub>\u2717 could not be measured at ${errored.map((e) => e === head ? opts.headLabel : `\`${e.sha.slice(0, 7)}\``).join(", ")} - the line holds level across the gap</sub>` : "";
+  return `
+${heading}
+
+Bytes over the last ${recorded.length} commits on \`${opts.defaultBranch}\`${head ? ` and ${opts.headLabel}` : ""}, each line as its % change since the oldest shown. \u{1F3F7}\uFE0F marks tagged commits.
+
+${charts.join("\n\n")}
+${erroredNote}${otherConfigNote}
+
+<details><summary>commits</summary>
+
+| ${header.join(" | ")} |
+| ${header.map(() => "---").join(" | ")} |
+${tableRows.join("\n")}
+
+</details>
+`;
 };
 
 // src/measure.ts
@@ -32624,14 +32940,6 @@ var aggregateRuns = (allRuns) => {
   });
 };
 
-// src/run.ts
-import { execSync } from "node:child_process";
-var run = (cmd, cwd) => {
-  console.log(`[true-site-size] $ ${cmd} (in ${cwd})`);
-  execSync(cmd, { cwd, stdio: "inherit" });
-};
-var runQuiet = (cmd, cwd) => execSync(cmd, { cwd, stdio: "pipe" }).toString().trim();
-
 // src/workspaceGit.ts
 import { rmSync as rmSync2 } from "node:fs";
 var gitIsUsable = (workspace) => {
@@ -32765,8 +33073,15 @@ var main = async () => {
     // also report the total built size on disk (every file, compressed as
     // served). Off skips compressing the whole site - cheaper on large builds
     measureDisk: input("measure-disk", "true") === "true",
+    // per-commit history on an orphan branch, charted in the comment
+    historyBranch: input("history-branch", ""),
+    historyLength: Number(input("history-length", "30")),
+    backfill: input("backfill", ""),
     token: input("github-token", process.env["GITHUB_TOKEN"] ?? "")
   };
+  if (config.backfill && !config.historyBranch) {
+    throw new Error("backfill needs a history-branch to record into");
+  }
   if (config.steps.length === 0) {
     throw new Error(
       "nothing to measure - set the `journey` or `scenarios` input"
@@ -32809,20 +33124,6 @@ var main = async () => {
       }
     }
   };
-  console.log("[true-site-size] measuring head...");
-  const { results: head, disk: headDisk } = await buildAndMeasure(workspace, config);
-  logBreakdown("head", head);
-  if (headDisk) {
-    console.log(
-      `[true-site-size] head total built size on disk: ${formatBytes(headDisk.total)} over ${Object.keys(headDisk.files).length} files`
-    );
-  }
-  const eventPath = process.env["GITHUB_EVENT_PATH"];
-  const event = eventPath && existsSync3(eventPath) ? JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(eventPath, "utf8"))) : {};
-  const prBase = event.pull_request?.base?.ref;
-  const compareRefs = baseSkippedReason ? [] : config.baseRefs.length ? config.baseRefs : prBase ? [prBase] : [];
-  const serverUrl = process.env["GITHUB_SERVER_URL"];
-  const repo = process.env["GITHUB_REPOSITORY"];
   const configHash = createHash2("sha256").update(
     JSON.stringify({
       steps: config.steps,
@@ -32847,11 +33148,78 @@ var main = async () => {
       cleaned = true;
     }
   };
+  const eventPath = process.env["GITHUB_EVENT_PATH"];
+  const event = eventPath && existsSync3(eventPath) ? JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(eventPath, "utf8"))) : {};
+  const defaultBranch = event.repository?.default_branch ?? "main";
+  const historyFile = historyFileFor(config.commentKey);
+  const backfill = async () => {
+    const commits = backfillCommits(workspace, config.backfill, defaultBranch);
+    const recorded = new Set(
+      readHistory(workspace, config.historyBranch, historyFile).filter((e) => e.configHash === configHash).map((e) => e.sha)
+    );
+    const todo = commits.filter((sha) => !recorded.has(sha));
+    console.log(
+      `[true-site-size] backfill: ${commits.length} commit(s) in "${config.backfill}", ${commits.length - todo.length} already recorded, ${todo.length} to measure`
+    );
+    const started = Date.now();
+    let slowestMs = 0;
+    for (const [i, sha] of todo.entries()) {
+      if (slowestMs && Date.now() - started + slowestMs * 1.2 > config.timeoutMs) {
+        console.warn(
+          `[true-site-size] backfill: stopping with ${todo.length - i} commit(s) left - another would likely overrun timeout-ms. Run the backfill again to continue`
+        );
+        break;
+      }
+      const commitStarted = Date.now();
+      console.log(
+        `[true-site-size] backfill ${i + 1}/${todo.length}: measuring ${sha.slice(0, 9)}...`
+      );
+      cleanOnce();
+      const dir = join3(workspace, ".true-site-size-base");
+      let entry;
+      try {
+        addBaseWorktree(workspace, dir, sha);
+        const built = await buildAndMeasure(dir, config);
+        logBreakdown(`backfill ${sha.slice(0, 9)}`, built.results);
+        entry = historyEntry(workspace, sha, configHash, built);
+      } catch (e) {
+        console.warn(
+          `[true-site-size] backfill: ${sha.slice(0, 9)} could not be measured (recorded as an error): ${e.message}`
+        );
+        entry = historyEntry(workspace, sha, configHash, {
+          error: e.message
+        });
+      } finally {
+        removeBaseWorktree(workspace, dir);
+      }
+      appendHistory(workspace, config.historyBranch, historyFile, [entry]);
+      slowestMs = Math.max(slowestMs, Date.now() - commitStarted);
+    }
+  };
+  if (config.backfill) {
+    if (baseSkippedReason) {
+      throw new Error(`backfill needs a usable git workspace: ${baseSkippedReason}`);
+    }
+    await backfill();
+    return;
+  }
+  console.log("[true-site-size] measuring head...");
+  const { results: head, disk: headDisk } = await buildAndMeasure(workspace, config);
+  logBreakdown("head", head);
+  if (headDisk) {
+    console.log(
+      `[true-site-size] head total built size on disk: ${formatBytes(headDisk.total)} over ${Object.keys(headDisk.files).length} files`
+    );
+  }
+  const prBase = event.pull_request?.base?.ref;
+  const compareRefs = baseSkippedReason ? [] : config.baseRefs.length ? config.baseRefs : prBase ? [prBase] : [];
+  const serverUrl = process.env["GITHUB_SERVER_URL"];
+  const repo = process.env["GITHUB_REPOSITORY"];
   const measureBaseRef = async (ref) => {
     const base = { ref, sha: null, describe: null, url: null };
     try {
       run(`git fetch --tags --depth=100 origin ${ref}`, workspace);
-      base.sha = execSync2("git rev-parse FETCH_HEAD", { cwd: workspace }).toString().trim();
+      base.sha = execSync3("git rev-parse FETCH_HEAD", { cwd: workspace }).toString().trim();
     } catch {
       console.warn(`[true-site-size] could not fetch base ref "${ref}"`);
       base.error = `could not fetch ref "${ref}" - does it exist on origin?`;
@@ -32860,7 +33228,7 @@ var main = async () => {
       return base;
     }
     try {
-      base.describe = execSync2("git describe --tags FETCH_HEAD", {
+      base.describe = execSync3("git describe --tags FETCH_HEAD", {
         cwd: workspace
       }).toString().trim();
     } catch {
@@ -32910,6 +33278,31 @@ var main = async () => {
   for (const ref of compareRefs) {
     bases.push(await measureBaseRef(ref));
   }
+  let historySection = "";
+  if (config.historyBranch && !baseSkippedReason) {
+    try {
+      const sha = process.env["GITHUB_SHA"];
+      const isDefaultPush = process.env["GITHUB_EVENT_NAME"] === "push" && process.env["GITHUB_REF"] === `refs/heads/${defaultBranch}`;
+      const headEntry = sha ? historyEntry(workspace, sha, configHash, { results: head, disk: headDisk }) : null;
+      let entries = readHistory(workspace, config.historyBranch, historyFile);
+      if (isDefaultPush && headEntry) {
+        appendHistory(workspace, config.historyBranch, historyFile, [headEntry]);
+        entries = mergeEntries(entries, [headEntry]);
+      }
+      historySection = formatHistory(entries, isDefaultPush ? null : headEntry, {
+        configHash,
+        length: config.historyLength,
+        tags: remoteTags(workspace),
+        defaultBranch,
+        commitUrl: (s) => serverUrl && repo ? `${serverUrl}/${repo}/commit/${s}` : null,
+        prUrl: (n) => serverUrl && repo ? `${serverUrl}/${repo}/pull/${n}` : null,
+        headLabel: event.pull_request ? "this PR" : "head",
+        commentKey: config.commentKey
+      });
+    } catch (e) {
+      console.warn(`[true-site-size] history unavailable: ${e.message}`);
+    }
+  }
   const runUrl = process.env["GITHUB_RUN_ID"] ? `${process.env["GITHUB_SERVER_URL"]}/${process.env["GITHUB_REPOSITORY"]}/actions/runs/${process.env["GITHUB_RUN_ID"]}` : void 0;
   const body = formatComment(head, bases, {
     runUrl,
@@ -32920,7 +33313,8 @@ var main = async () => {
     collapsibleBreakdown: config.collapsibleBreakdown,
     headDisk,
     measureDisk: config.measureDisk,
-    baseSkippedReason
+    baseSkippedReason,
+    historySection
   });
   console.log(body);
   const issueNumber = config.prNumber ? Number(config.prNumber) : event.pull_request?.number;

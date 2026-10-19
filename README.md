@@ -127,6 +127,66 @@ On push to `main`, `pr-number` targets the open release PR; on a normal PR it's
 empty, so the comment lands on the triggering PR as usual. An empty `pr-number`
 with no PR in the event simply skips commenting.
 
+## History: a timeline of past commits
+
+Set `history-branch` and the comment gains a 📈 history section: a line chart of
+the last `history-length` commits on the default branch, with a PR's own head as
+the newest point, and a collapsed table linking each commit and its PR.
+
+- **Where it's stored:** an orphan branch of your repo (created on the first
+  write), one json file per `comment-key`. A push to the default branch appends
+  its head's sizes; PR runs only read it, so PRs from forks still see the chart.
+  The workflow needs `contents: write` for the push runs to record.
+- **What's plotted:** each visit's total (plus on-disk size) in one chart and
+  each row in another, as **% change since the oldest point shown**. Rows differ
+  by orders of magnitude, so a shared byte axis would flatten the small ones;
+  relative change puts them on one scale, fitted to the data rather than pinned
+  at zero. Tagged commits are labelled 🏷️ on the axis and line. Mermaid charts
+  can't link or show tooltips, so the table carries the links, messages and
+  absolute sizes.
+- **Comparability:** only commits measured under the same config (journey,
+  compression, build command…) are charted together. Change the journey and
+  the chart restarts; backfill to re-measure the past under the new config.
+
+### Backfilling
+
+`backfill` measures past commits into the history instead of the usual report,
+eg from a manually dispatched run:
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      range:
+        description: 'commits to measure: "v26.0.0..main", or a count like 30'
+        default: "30"
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ...install + build setup, as for the normal run...
+      - uses: jimhigson/true-site-size@main
+        with:
+          history-branch: true-site-size-history
+          backfill: ${{ inputs.range }}
+          timeout-ms: "18000000" # 5h - each commit is a full build + measure
+          # identical measurement inputs to the normal run, or the points
+          # won't be comparable
+          scenarios: '[{ "name": "app", "url": "/", "mark": "app-ready" }]'
+```
+
+It walks the range's first-parent commits (one per merged PR) newest first,
+pushes each result as soon as it's measured and skips commits already recorded,
+so a backfill that runs out of `timeout-ms` (it stops cleanly before starting a
+commit that would overrun) continues where it left off when rerun. A commit
+that can't be built or measured - too old for today's toolchain, or from before
+the app emitted its marks - is recorded as a gap rather than retried.
+
 ## Journeys: measuring interaction, not just navigation
 
 The `journey` input is the full step language; `scenarios` above is sugar for
@@ -313,6 +373,9 @@ Only fully-successful base measurements are cached.
 | `collapse-breakdown` | `true` | collapse each ref's changed-file breakdown into an expandable `<details>`; `false` shows it inline |
 | `measure-disk` | `true` | also report total built size on disk (compressed as served, every file in serve-dir); `false` skips the cost on large sites |
 | `comment-key` | `""` | maintain separate comments per key |
+| `history-branch` | `""` | orphan branch recording each default-branch commit's sizes, charted in the comment; empty disables |
+| `history-length` | `30` | how many recorded commits the history chart shows |
+| `backfill` | `""` | measure a range (`A..B`) or count (`N`) of past commits into `history-branch` instead of reporting |
 | `github-token` | `${{ github.token }}` | for the comment |
 
 Requires a Chrome/Chromium on the runner (preinstalled on GitHub's Ubuntu

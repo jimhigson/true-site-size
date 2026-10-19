@@ -57,6 +57,7 @@ export const formatComment = (
     headDisk = null,
     measureDisk = true,
     baseSkippedReason = null,
+    historySection = "",
   }: CommentOptions,
 ) => {
   const stripRe = stripHash ? new RegExp(stripHash, "g") : null;
@@ -410,7 +411,7 @@ True wire bytes from cold cache to \`performance.mark\`, network settled.
 ${rows.join("\n")}
 ${spreadNote}${ignoredNote}${baseErrorNotes}${duplicateNotes}${comparedNote}
 ${detailsBlocks}
-${diskSection}
+${diskSection}${historySection}
 ${runUrl ? `\n<sub>📋 per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}
 <sub>measured by [true-site-size](https://github.com/jimhigson/true-site-size)</sub>
 `;

@@ -6,6 +6,16 @@ import { join, resolve } from "node:path";
 
 import { formatComment, postComment } from "./comment.ts";
 import { formatBytes, formatDuration } from "./formatBytes.ts";
+import {
+  appendHistory,
+  backfillCommits,
+  historyEntry,
+  historyFileFor,
+  mergeEntries,
+  readHistory,
+  remoteTags,
+} from "./history.ts";
+import { formatHistory } from "./historyChart.ts";
 import { measure } from "./measure.ts";
 import { run } from "./run.ts";
 import { assertCompressionSupported, diskSizes, serve } from "./serve.ts";
@@ -19,6 +29,7 @@ import type {
   BaseRef,
   BuiltResult,
   Config,
+  HistoryEntry,
   JourneyStep,
   RowResult,
 } from "./types.ts";
@@ -128,8 +139,15 @@ const main = async () => {
     // also report the total built size on disk (every file, compressed as
     // served). Off skips compressing the whole site - cheaper on large builds
     measureDisk: input("measure-disk", "true") === "true",
+    // per-commit history on an orphan branch, charted in the comment
+    historyBranch: input("history-branch", ""),
+    historyLength: Number(input("history-length", "30")),
+    backfill: input("backfill", ""),
     token: input("github-token", process.env["GITHUB_TOKEN"] ?? ""),
   };
+  if (config.backfill && !config.historyBranch) {
+    throw new Error("backfill needs a history-branch to record into");
+  }
   if (config.steps.length === 0) {
     throw new Error(
       "nothing to measure - set the `journey` or `scenarios` input",
@@ -186,35 +204,6 @@ const main = async () => {
     }
   };
 
-  console.log("[true-site-size] measuring head...");
-  const { results: head, disk: headDisk } = await buildAndMeasure(workspace, config);
-  logBreakdown("head", head);
-  if (headDisk) {
-    console.log(
-      `[true-site-size] head total built size on disk: ${formatBytes(headDisk.total)} over ${Object.keys(headDisk.files).length} files`,
-    );
-  }
-
-  // the github event payload supplies the PR's base ref (the default to
-  // compare against) and its number (for commenting)
-  const eventPath = process.env["GITHUB_EVENT_PATH"];
-  const event =
-    eventPath && existsSync(eventPath) ?
-      JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(eventPath, "utf8")))
-    : {};
-  const prBase = event.pull_request?.base?.ref;
-  // explicit base-refs, else the PR base as a single ref. Each is measured and
-  // shown as its own column. Outside a PR (or with neither), or where the
-  // workspace bars measuring a base at all, head stands alone.
-  const compareRefs =
-    baseSkippedReason ? []
-    : config.baseRefs.length ? config.baseRefs
-    : prBase ? [prBase]
-    : [];
-
-  const serverUrl = process.env["GITHUB_SERVER_URL"];
-  const repo = process.env["GITHUB_REPOSITORY"];
-
   // every base ref shares the measurement config, so they share a cache key;
   // the base sha distinguishes them on disk. The cache dir is persisted between
   // runs by actions/cache (see action.yml), so repeat pushes to a pr skip the
@@ -257,6 +246,102 @@ const main = async () => {
       cleaned = true;
     }
   };
+
+  // the github event payload supplies the PR's base ref (the default to
+  // compare against) and its number (for commenting)
+  const eventPath = process.env["GITHUB_EVENT_PATH"];
+  const event =
+    eventPath && existsSync(eventPath) ?
+      JSON.parse(await import("node:fs").then((fs) => fs.readFileSync(eventPath, "utf8")))
+    : {};
+  const defaultBranch: string = event.repository?.default_branch ?? "main";
+  const historyFile = historyFileFor(config.commentKey);
+
+  /**
+   * measure each commit the backfill spec names into the history, newest
+   * first. Commits already recorded under this config are skipped and each
+   * result is pushed as soon as it's measured, so a run cut short - or several
+   * runs sharing a long range - pick up where the last left off. A commit that
+   * can't be built (too old for today's toolchain, or from before the app
+   * emitted its marks) is recorded as an error, not retried on every run.
+   */
+  const backfill = async () => {
+    const commits = backfillCommits(workspace, config.backfill, defaultBranch);
+    const recorded = new Set(
+      readHistory(workspace, config.historyBranch, historyFile)
+        .filter((e) => e.configHash === configHash)
+        .map((e) => e.sha),
+    );
+    const todo = commits.filter((sha) => !recorded.has(sha));
+    console.log(
+      `[true-site-size] backfill: ${commits.length} commit(s) in "${config.backfill}", ${commits.length - todo.length} already recorded, ${todo.length} to measure`,
+    );
+    const started = Date.now();
+    let slowestMs = 0;
+    for (const [i, sha] of todo.entries()) {
+      // stop cleanly rather than have the watchdog kill a half-measured commit
+      if (slowestMs && Date.now() - started + slowestMs * 1.2 > config.timeoutMs) {
+        console.warn(
+          `[true-site-size] backfill: stopping with ${todo.length - i} commit(s) left - another would likely overrun timeout-ms. Run the backfill again to continue`,
+        );
+        break;
+      }
+      const commitStarted = Date.now();
+      console.log(
+        `[true-site-size] backfill ${i + 1}/${todo.length}: measuring ${sha.slice(0, 9)}...`,
+      );
+      cleanOnce();
+      const dir = join(workspace, ".true-site-size-base");
+      let entry: HistoryEntry;
+      try {
+        addBaseWorktree(workspace, dir, sha);
+        const built = await buildAndMeasure(dir, config);
+        logBreakdown(`backfill ${sha.slice(0, 9)}`, built.results);
+        entry = historyEntry(workspace, sha, configHash, built);
+      } catch (e) {
+        console.warn(
+          `[true-site-size] backfill: ${sha.slice(0, 9)} could not be measured (recorded as an error): ${(e as Error).message}`,
+        );
+        entry = historyEntry(workspace, sha, configHash, {
+          error: (e as Error).message,
+        });
+      } finally {
+        removeBaseWorktree(workspace, dir);
+      }
+      appendHistory(workspace, config.historyBranch, historyFile, [entry]);
+      slowestMs = Math.max(slowestMs, Date.now() - commitStarted);
+    }
+  };
+
+  if (config.backfill) {
+    if (baseSkippedReason) {
+      throw new Error(`backfill needs a usable git workspace: ${baseSkippedReason}`);
+    }
+    await backfill();
+    return;
+  }
+
+  console.log("[true-site-size] measuring head...");
+  const { results: head, disk: headDisk } = await buildAndMeasure(workspace, config);
+  logBreakdown("head", head);
+  if (headDisk) {
+    console.log(
+      `[true-site-size] head total built size on disk: ${formatBytes(headDisk.total)} over ${Object.keys(headDisk.files).length} files`,
+    );
+  }
+
+  const prBase = event.pull_request?.base?.ref;
+  // explicit base-refs, else the PR base as a single ref. Each is measured and
+  // shown as its own column. Outside a PR (or with neither), or where the
+  // workspace bars measuring a base at all, head stands alone.
+  const compareRefs =
+    baseSkippedReason ? []
+    : config.baseRefs.length ? config.baseRefs
+    : prBase ? [prBase]
+    : [];
+
+  const serverUrl = process.env["GITHUB_SERVER_URL"];
+  const repo = process.env["GITHUB_REPOSITORY"];
 
   /** fetch, identify and measure one base ref; never throws */
   const measureBaseRef = async (ref: string): Promise<BaseRef> => {
@@ -345,6 +430,40 @@ const main = async () => {
     bases.push(await measureBaseRef(ref));
   }
 
+  // history: a push to the default branch records its head; every run charts
+  // the recorded commits, a PR's head joining them as the newest point.
+  // History is optional garnish on the report, so its failures only warn
+  let historySection = "";
+  if (config.historyBranch && !baseSkippedReason) {
+    try {
+      const sha = process.env["GITHUB_SHA"];
+      const isDefaultPush =
+        process.env["GITHUB_EVENT_NAME"] === "push" &&
+        process.env["GITHUB_REF"] === `refs/heads/${defaultBranch}`;
+      const headEntry =
+        sha ?
+          historyEntry(workspace, sha, configHash, { results: head, disk: headDisk })
+        : null;
+      let entries = readHistory(workspace, config.historyBranch, historyFile);
+      if (isDefaultPush && headEntry) {
+        appendHistory(workspace, config.historyBranch, historyFile, [headEntry]);
+        entries = mergeEntries(entries, [headEntry]);
+      }
+      historySection = formatHistory(entries, isDefaultPush ? null : headEntry, {
+        configHash,
+        length: config.historyLength,
+        tags: remoteTags(workspace),
+        defaultBranch,
+        commitUrl: (s) => (serverUrl && repo ? `${serverUrl}/${repo}/commit/${s}` : null),
+        prUrl: (n) => (serverUrl && repo ? `${serverUrl}/${repo}/pull/${n}` : null),
+        headLabel: event.pull_request ? "this PR" : "head",
+        commentKey: config.commentKey,
+      });
+    } catch (e) {
+      console.warn(`[true-site-size] history unavailable: ${(e as Error).message}`);
+    }
+  }
+
   const runUrl =
     process.env["GITHUB_RUN_ID"] ?
       `${process.env["GITHUB_SERVER_URL"]}/${process.env["GITHUB_REPOSITORY"]}/actions/runs/${process.env["GITHUB_RUN_ID"]}`
@@ -359,6 +478,7 @@ const main = async () => {
     headDisk,
     measureDisk: config.measureDisk,
     baseSkippedReason,
+    historySection,
   });
   console.log(body);
 
