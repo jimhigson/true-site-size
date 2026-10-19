@@ -122,7 +122,8 @@ const chartFor = (
       const labels = [
         // tags label the first line only - once per chart is enough to read
         si === 0 && tagsAt[i] ? `🏷️ ${tagsAt[i]}` : "",
-        raw[i] === undefined ? "✗" : "",
+        // a run of gaps is marked once, where it starts
+        raw[i] === undefined && (i === 0 || raw[i - 1] !== undefined) ? "✗" : "",
         i === pcts.length - 1 ? signedPct(pct) : "",
       ].filter(Boolean);
       return labels.length ? `${pct} ${mq(labels.join(" "))}` : `${pct}`;
@@ -221,7 +222,7 @@ export const formatHistory = (
   const errored = points.filter((e) => e.error || e.rows.some((r) => r.error));
   const erroredNote =
     errored.length ?
-      `\n<sub>✗ could not be measured at ${errored.map((e) => (e === head ? opts.headLabel : `\`${e.sha.slice(0, 7)}\``)).join(", ")} - the line holds level across the gap</sub>`
+      `\n<sub>✗ marks where a line starts a gap - ${errored.length} commit(s) with something unmeasured, shown ✗ in the table. A line is drawn level across its gap, since the chart needs a value at every commit</sub>`
     : "";
 
   return `

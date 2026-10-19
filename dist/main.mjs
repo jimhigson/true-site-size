@@ -32141,7 +32141,8 @@ var chartFor = (title, series, points, xLabels, tagsAt) => {
       const labels = [
         // tags label the first line only - once per chart is enough to read
         si === 0 && tagsAt[i] ? `\u{1F3F7}\uFE0F ${tagsAt[i]}` : "",
-        raw[i] === void 0 ? "\u2717" : "",
+        // a run of gaps is marked once, where it starts
+        raw[i] === void 0 && (i === 0 || raw[i - 1] !== void 0) ? "\u2717" : "",
         i === pcts.length - 1 ? signedPct(pct) : ""
       ].filter(Boolean);
       return labels.length ? `${pct} ${mq(labels.join(" "))}` : `${pct}`;
@@ -32215,7 +32216,7 @@ ${heading}
   const header = ["commit", "PR", "message", ...columns.map((c) => c.name)];
   const errored = points.filter((e) => e.error || e.rows.some((r) => r.error));
   const erroredNote = errored.length ? `
-<sub>\u2717 could not be measured at ${errored.map((e) => e === head ? opts.headLabel : `\`${e.sha.slice(0, 7)}\``).join(", ")} - the line holds level across the gap</sub>` : "";
+<sub>\u2717 marks where a line starts a gap - ${errored.length} commit(s) with something unmeasured, shown \u2717 in the table. A line is drawn level across its gap, since the chart needs a value at every commit</sub>` : "";
   return `
 ${heading}
 
