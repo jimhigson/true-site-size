@@ -85,69 +85,67 @@ const seriesFor = (newest: HistoryEntry) => {
 };
 
 /**
- * one mermaid xychart of a group of series, each plotted as its % change from
- * its own oldest value in the window. Bytes of different rows differ by orders
- * of magnitude, so on a shared byte axis the small rows flatten into lines;
- * relative change puts every series on one comparable scale, and the axis is
- * fitted to the data rather than pinned at zero so small moves stay visible.
+ * one mermaid xychart of a single series in kB. Sizes differ by orders of
+ * magnitude (a 10 kB row beside a 5 MB site), so on a shared axis the small
+ * ones flatten into lines - each series gets its own chart instead, its axis
+ * fitted to its own range rather than pinned at zero so small moves show.
+ * The title carries the latest size and its change across the window.
  */
 const chartFor = (
-  title: string,
-  series: Series[],
+  series: Series,
+  colour: string,
   points: HistoryEntry[],
   xLabels: string[],
   tagsAt: (string | undefined)[],
 ) => {
-  const plotted = series.map((s) => {
-    const raw = points.map(s.valueOf);
-    const ref = raw.find((v) => v !== undefined);
-    // a gap (an errored row) holds the line level, since mermaid needs a
-    // value at every point; it's marked ✗ and the table shows the error
-    let last = 0;
-    const pcts = raw.map((v) => {
-      if (v !== undefined && ref) last = round1(((v - ref) / ref) * 100);
-      return last;
-    });
-    return { s, raw, pcts };
+  const raw = points.map(series.valueOf);
+  const firstIndex = raw.findIndex((v) => v !== undefined);
+  const first = raw[firstIndex];
+  const latest = raw.findLast((v) => v !== undefined);
+  if (first === undefined || latest === undefined) return "";
+  // a gap (an errored row) holds the line level, since mermaid needs a value
+  // at every point; it's marked ✗ and the table shows the error
+  let last = first;
+  const kb = raw.map((v) => {
+    if (v !== undefined) last = v;
+    return round1(last / 1024);
   });
-  const all = plotted.flatMap((p) => p.pcts);
-  const lo = Math.min(0, ...all);
-  const hi = Math.max(0, ...all);
-  const pad = Math.max((hi - lo) * 0.1, 0.5);
-  const yMin = Math.floor(lo - pad);
-  const yMax = Math.ceil(hi + pad);
+  const lo = Math.min(...kb);
+  const hi = Math.max(...kb);
+  // headroom for the point labels, and a floor so a flat line isn't all axis
+  const pad = Math.max((hi - lo) * 0.15, hi * 0.005, 0.1);
+  const yMin = Math.max(0, round1(lo - pad));
+  const yMax = round1(hi + pad);
 
-  const lines = plotted.map(({ s, raw, pcts }, si) => {
-    const values = pcts.map((pct, i) => {
-      const labels = [
-        // tags label the first line only - once per chart is enough to read
-        si === 0 && tagsAt[i] ? `🏷️ ${tagsAt[i]}` : "",
-        // a run of gaps is marked once, where it starts
-        raw[i] === undefined && (i === 0 || raw[i - 1] !== undefined) ? "✗" : "",
-        i === pcts.length - 1 ? signedPct(pct) : "",
-      ].filter(Boolean);
-      return labels.length ? `${pct} ${mq(labels.join(" "))}` : `${pct}`;
-    });
-    return `  line ${mq(s.name)} [${values.join(", ")}]`;
+  const values = kb.map((v, i) => {
+    const labels = [
+      tagsAt[i] ? `🏷️ ${tagsAt[i]}` : "",
+      // a run of gaps is marked once, where it starts
+      raw[i] === undefined && (i === 0 || raw[i - 1] !== undefined) ? "✗" : "",
+    ].filter(Boolean);
+    return labels.length ? `${v} ${mq(labels.join(" "))}` : `${v}`;
   });
+  const change = first ? ((latest - first) / first) * 100 : 0;
+  const title = `${series.name}: ${formatBytes(latest)} (${signedPct(change)} since ${xLabels[firstIndex]})`;
 
   return `\`\`\`mermaid
 ---
 config:
   xyChart:
     width: ${Math.max(700, points.length * 24)}
-    height: 360
+    height: 260
+    titleFontSize: 16
     xAxis:
       labelRotation: 45
   themeVariables:
     xyChart:
-      plotColorPalette: "${palette.slice(0, series.length).join(", ")}"
+      plotColorPalette: "${colour}"
 ---
 xychart-beta
   title ${mq(title)}
   x-axis [${xLabels.map(mq).join(", ")}]
-  y-axis ${mq(`% change since ${xLabels[0]}`)} ${yMin} --> ${yMax}
-${lines.join("\n")}
+  y-axis "kB" ${yMin} --> ${yMax}
+  line [${values.join(", ")}]
 \`\`\``;
 };
 
@@ -191,12 +189,19 @@ export const formatHistory = (
 
   const { totals, rows } = seriesFor(newest);
   // with one row per visit, the rows chart would just repeat the totals
-  const charts = [
-    chartFor("totals", totals, points, xLabels, tagsAt),
-    ...(rows.length > totals.filter((t) => t.name !== "💾 on disk").length ?
-      [chartFor("per row", rows, points, xLabels, tagsAt)]
-    : []),
-  ];
+  const chartsOf = (series: Series[], offset: number) =>
+    series
+      .map((sr, i) =>
+        chartFor(sr, palette[(offset + i) % palette.length]!, points, xLabels, tagsAt),
+      )
+      .filter(Boolean)
+      .join("\n\n");
+  const totalCharts = chartsOf(totals, 0);
+  // with one row per visit, the row charts would just repeat the totals
+  const rowCharts =
+    rows.length > totals.filter((t) => t.name !== "💾 on disk").length ?
+      `\n\n<details><summary>per row</summary>\n\n${chartsOf(rows, totals.length)}\n\n</details>`
+    : "";
 
   const columns = [...totals, ...rows];
   const tableRows = [...points].reverse().map((e) => {
@@ -228,9 +233,9 @@ export const formatHistory = (
   return `
 ${heading}
 
-Bytes over the last ${recorded.length} commits on \`${opts.defaultBranch}\`${head ? ` and ${opts.headLabel}` : ""}, each line as its % change since the oldest shown. 🏷️ marks tagged commits.
+Bytes over the last ${recorded.length} commits on \`${opts.defaultBranch}\`${head ? ` and ${opts.headLabel}` : ""}, one chart per total, each axis fitted to its own range. 🏷️ marks tagged commits.
 
-${charts.join("\n\n")}
+${totalCharts}${rowCharts}
 ${erroredNote}${otherConfigNote}
 
 <details><summary>commits</summary>

@@ -32119,53 +32119,50 @@ var seriesFor = (newest) => {
   }));
   return { totals, rows };
 };
-var chartFor = (title, series, points, xLabels, tagsAt) => {
-  const plotted = series.map((s) => {
-    const raw = points.map(s.valueOf);
-    const ref = raw.find((v) => v !== void 0);
-    let last = 0;
-    const pcts = raw.map((v) => {
-      if (v !== void 0 && ref) last = round1((v - ref) / ref * 100);
-      return last;
-    });
-    return { s, raw, pcts };
+var chartFor = (series, colour, points, xLabels, tagsAt) => {
+  const raw = points.map(series.valueOf);
+  const firstIndex = raw.findIndex((v) => v !== void 0);
+  const first = raw[firstIndex];
+  const latest = raw.findLast((v) => v !== void 0);
+  if (first === void 0 || latest === void 0) return "";
+  let last = first;
+  const kb = raw.map((v) => {
+    if (v !== void 0) last = v;
+    return round1(last / 1024);
   });
-  const all = plotted.flatMap((p) => p.pcts);
-  const lo = Math.min(0, ...all);
-  const hi = Math.max(0, ...all);
-  const pad = Math.max((hi - lo) * 0.1, 0.5);
-  const yMin = Math.floor(lo - pad);
-  const yMax = Math.ceil(hi + pad);
-  const lines = plotted.map(({ s, raw, pcts }, si) => {
-    const values = pcts.map((pct, i) => {
-      const labels = [
-        // tags label the first line only - once per chart is enough to read
-        si === 0 && tagsAt[i] ? `\u{1F3F7}\uFE0F ${tagsAt[i]}` : "",
-        // a run of gaps is marked once, where it starts
-        raw[i] === void 0 && (i === 0 || raw[i - 1] !== void 0) ? "\u2717" : "",
-        i === pcts.length - 1 ? signedPct(pct) : ""
-      ].filter(Boolean);
-      return labels.length ? `${pct} ${mq(labels.join(" "))}` : `${pct}`;
-    });
-    return `  line ${mq(s.name)} [${values.join(", ")}]`;
+  const lo = Math.min(...kb);
+  const hi = Math.max(...kb);
+  const pad = Math.max((hi - lo) * 0.15, hi * 5e-3, 0.1);
+  const yMin = Math.max(0, round1(lo - pad));
+  const yMax = round1(hi + pad);
+  const values = kb.map((v, i) => {
+    const labels = [
+      tagsAt[i] ? `\u{1F3F7}\uFE0F ${tagsAt[i]}` : "",
+      // a run of gaps is marked once, where it starts
+      raw[i] === void 0 && (i === 0 || raw[i - 1] !== void 0) ? "\u2717" : ""
+    ].filter(Boolean);
+    return labels.length ? `${v} ${mq(labels.join(" "))}` : `${v}`;
   });
+  const change = first ? (latest - first) / first * 100 : 0;
+  const title = `${series.name}: ${formatBytes(latest)} (${signedPct(change)} since ${xLabels[firstIndex]})`;
   return `\`\`\`mermaid
 ---
 config:
   xyChart:
     width: ${Math.max(700, points.length * 24)}
-    height: 360
+    height: 260
+    titleFontSize: 16
     xAxis:
       labelRotation: 45
   themeVariables:
     xyChart:
-      plotColorPalette: "${palette.slice(0, series.length).join(", ")}"
+      plotColorPalette: "${colour}"
 ---
 xychart-beta
   title ${mq(title)}
   x-axis [${xLabels.map(mq).join(", ")}]
-  y-axis ${mq(`% change since ${xLabels[0]}`)} ${yMin} --> ${yMax}
-${lines.join("\n")}
+  y-axis "kB" ${yMin} --> ${yMax}
+  line [${values.join(", ")}]
 \`\`\``;
 };
 var formatHistory = (entries, head, opts) => {
@@ -32195,10 +32192,17 @@ ${heading}
     (e, i) => e === head ? opts.headLabel : tagsAt[i] ? `\u{1F3F7}\uFE0F ${tagsAt[i]}` : e.pr !== null ? `#${e.pr}` : e.sha.slice(0, 7)
   );
   const { totals, rows } = seriesFor(newest);
-  const charts = [
-    chartFor("totals", totals, points, xLabels, tagsAt),
-    ...rows.length > totals.filter((t) => t.name !== "\u{1F4BE} on disk").length ? [chartFor("per row", rows, points, xLabels, tagsAt)] : []
-  ];
+  const chartsOf = (series, offset) => series.map(
+    (sr, i) => chartFor(sr, palette[(offset + i) % palette.length], points, xLabels, tagsAt)
+  ).filter(Boolean).join("\n\n");
+  const totalCharts = chartsOf(totals, 0);
+  const rowCharts = rows.length > totals.filter((t) => t.name !== "\u{1F4BE} on disk").length ? `
+
+<details><summary>per row</summary>
+
+${chartsOf(rows, totals.length)}
+
+</details>` : "";
   const columns = [...totals, ...rows];
   const tableRows = [...points].reverse().map((e) => {
     const commitUrl = e === head ? null : opts.commitUrl(e.sha);
@@ -32220,9 +32224,9 @@ ${heading}
   return `
 ${heading}
 
-Bytes over the last ${recorded.length} commits on \`${opts.defaultBranch}\`${head ? ` and ${opts.headLabel}` : ""}, each line as its % change since the oldest shown. \u{1F3F7}\uFE0F marks tagged commits.
+Bytes over the last ${recorded.length} commits on \`${opts.defaultBranch}\`${head ? ` and ${opts.headLabel}` : ""}, one chart per total, each axis fitted to its own range. \u{1F3F7}\uFE0F marks tagged commits.
 
-${charts.join("\n\n")}
+${totalCharts}${rowCharts}
 ${erroredNote}${otherConfigNote}
 
 <details><summary>commits</summary>

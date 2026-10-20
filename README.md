@@ -137,13 +137,13 @@ the newest point, and a collapsed table linking each commit and its PR.
   write), one json file per `comment-key`. A push to the default branch appends
   its head's sizes; PR runs only read it, so PRs from forks still see the chart.
   The workflow needs `contents: write` for the push runs to record.
-- **What's plotted:** each visit's total (plus on-disk size) in one chart and
-  each row in another, as **% change since the oldest point shown**. Rows differ
-  by orders of magnitude, so a shared byte axis would flatten the small ones;
-  relative change puts them on one scale, fitted to the data rather than pinned
-  at zero. Tagged commits are labelled 🏷️ on the axis and line. Mermaid charts
-  can't link or show tooltips, so the table carries the links, messages and
-  absolute sizes.
+- **What's plotted:** sizes in kB, one chart per visit total (and on-disk
+  size), with each row's chart in a collapsed section. Sizes differ by orders
+  of magnitude, so a shared axis would flatten the small ones; each chart's
+  axis is fitted to its own range rather than pinned at zero, so small moves
+  stay visible. Each title gives the latest size and its change across the
+  window. Tagged commits are labelled 🏷️ on the axis and line. Mermaid charts
+  can't link or show tooltips, so the table carries the links and messages.
 - **Comparability:** only commits measured under the same config (journey,
   compression, build command…) are charted together. Change the journey and
   the chart restarts; backfill to re-measure the past under the new config.
