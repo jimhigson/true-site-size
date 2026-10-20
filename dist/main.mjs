@@ -32051,7 +32051,7 @@ var remoteTags = (workspace) => {
   }
   return tags;
 };
-var backfillCommits = (workspace, spec, defaultBranch) => {
+var backfillCommits = (workspace, spec, defaultBranch, releaseTag) => {
   const shallow = runQuiet("git rev-parse --is-shallow-repository", workspace) === "true";
   run(
     `git fetch --tags${shallow ? " --unshallow" : ""} origin +refs/heads/${defaultBranch}:refs/remotes/origin/${defaultBranch}`,
@@ -32066,17 +32066,27 @@ var backfillCommits = (workspace, spec, defaultBranch) => {
     }
     throw new Error(`backfill: cannot resolve "${name}" to a commit`);
   };
-  const trimmed = spec.trim();
-  const revs = /^\d+$/.test(trimmed) ? `--max-count=${trimmed} origin/${defaultBranch}` : (() => {
-    const [from, to] = trimmed.split("..");
-    if (!from || !to) {
-      throw new Error(
-        `backfill: expected a range "A..B" or a commit count, got "${spec}"`
-      );
+  const firstParents = (revs) => gitOut(`git rev-list --first-parent ${revs}`, workspace).split("\n").filter(Boolean);
+  const commitsOf = (part) => {
+    if (/^\d+$/.test(part)) {
+      return firstParents(`--max-count=${part} origin/${defaultBranch}`);
     }
-    return `${resolve2(from)}..${resolve2(to)}`;
-  })();
-  return gitOut(`git rev-list --first-parent ${revs}`, workspace).split("\n").filter(Boolean);
+    const releases = /^releases:(\d+)$/.exec(part);
+    if (releases) {
+      return gitOut(
+        `git tag --merged origin/${defaultBranch} --sort=-v:refname`,
+        workspace
+      ).split("\n").filter((tag) => releaseTag.test(tag)).slice(0, Number(releases[1])).map(resolve2);
+    }
+    if (part.includes("..")) {
+      const [from, to] = part.split("..");
+      if (!from || !to) throw new Error(`backfill: incomplete range "${part}"`);
+      return firstParents(`${resolve2(from)}..${resolve2(to)}`);
+    }
+    return [resolve2(part)];
+  };
+  const parts = spec.split(",").map((p) => p.trim()).filter(Boolean);
+  return [...new Set(parts.flatMap(commitsOf))];
 };
 
 // src/historyChart.ts
@@ -32126,6 +32136,7 @@ var chartFor = (series, colour, points, xLabels, tagsAt) => {
   const firstIndex = raw.findIndex((v) => v !== void 0);
   const first = raw[firstIndex];
   const latest = raw.findLast((v) => v !== void 0);
+  if (raw.filter((v) => v !== void 0).length < 2) return "";
   if (first === void 0 || latest === void 0) return "";
   let last = first;
   const kb = raw.map((v) => {
@@ -32174,7 +32185,10 @@ var formatHistory = (entries, head, opts) => {
   const otherConfig = new Set(
     entries.filter((e) => e.configHash !== opts.configHash).map((e) => e.sha)
   ).size;
-  const recorded = comparable.slice(-opts.length);
+  const lastReleaseIndex = comparable.findLastIndex(
+    (e) => (opts.tags.get(e.sha) ?? []).some(opts.isRelease)
+  );
+  const recorded = comparable.slice(lastReleaseIndex === -1 ? 0 : lastReleaseIndex).slice(-opts.length);
   const points = head ? [...recorded, head] : recorded;
   const heading = `### \u{1F4C8} history${opts.commentKey ? ` (${opts.commentKey})` : ""}`;
   const otherConfigNote = otherConfig ? `
@@ -32187,24 +32201,42 @@ ${heading}
 <sub>${comparable.length} commit(s) on \`${opts.defaultBranch}\` recorded so far - the chart appears once there are two points to join. Backfill to seed it.</sub>${otherConfigNote}
 `;
   }
-  const tagsAt = points.map(
-    (e) => e === head ? void 0 : opts.tags.get(e.sha)?.join(", ")
-  );
-  const xLabels = points.map(
-    (e, i) => e === head ? opts.headLabel : tagsAt[i] ? `\u{1F3F7}\uFE0F ${tagsAt[i]}` : e.pr !== null ? `#${e.pr}` : e.sha.slice(0, 7)
-  );
   const { totals, rows } = seriesFor(newest);
-  const chartsOf = (series, offset) => series.map(
-    (sr, i) => chartFor(sr, palette[(offset + i) % palette.length], points, xLabels, tagsAt)
-  ).filter(Boolean).join("\n\n");
   const flagged = opts.charted.visits.size + opts.charted.rows.size > 0;
-  const charts = chartsOf(
-    flagged ? [
-      ...totals.filter((t) => t.visit !== void 0 && opts.charted.visits.has(t.visit)),
-      ...rows.filter((r) => opts.charted.rows.has(r.rowName))
-    ] : totals.filter((t) => t.visit !== void 0),
-    0
-  );
+  const chartedSeries = flagged ? [
+    ...totals.filter((t) => t.visit !== void 0 && opts.charted.visits.has(t.visit)),
+    ...rows.filter((r) => opts.charted.rows.has(r.rowName))
+  ] : totals.filter((t) => t.visit !== void 0);
+  const tagsOf = (e) => e === head ? [] : opts.tags.get(e.sha) ?? [];
+  const chartsOver = (over, labelTags) => {
+    const tagsAt = over.map((e) => tagsOf(e).join(", ") || void 0);
+    const xLabels = over.map(
+      (e, i) => e === head ? opts.headLabel : tagsAt[i] ? `\u{1F3F7}\uFE0F ${tagsAt[i]}` : e.pr !== null ? `#${e.pr}` : e.sha.slice(0, 7)
+    );
+    return chartedSeries.map(
+      (sr, i) => chartFor(
+        sr,
+        palette[i % palette.length],
+        over,
+        xLabels,
+        labelTags ? tagsAt : over.map(() => void 0)
+      ) || `<sub>${sr.name}: fewer than two of these commits measured it, so there's no line to draw</sub>`
+    ).join("\n\n");
+  };
+  const releaseEntries = comparable.filter((e) => tagsOf(e).some(opts.isRelease));
+  const lastRelease = releaseEntries.at(-1);
+  const releaseName = lastRelease && tagsOf(lastRelease).find(opts.isRelease);
+  const releasePoints = [
+    ...releaseEntries.slice(-opts.releases),
+    ...head ? [head] : []
+  ];
+  const releasesSection = releaseEntries.length >= (head ? 1 : 2) ? `
+#### \u{1F3F7}\uFE0F last ${Math.min(releaseEntries.length, opts.releases)} release(s)${head ? ` and ${opts.headLabel}` : ""}
+
+${chartsOver(releasePoints, false)}
+` : `
+<sub>no recorded release yet for a releases chart - backfill \`releases:6\` to measure the latest releases</sub>
+`;
   const columns = [...totals, ...rows];
   const tableRows = [...points].reverse().map((e) => {
     const commitUrl = e === head ? null : opts.commitUrl(e.sha);
@@ -32226,10 +32258,12 @@ ${heading}
   return `
 ${heading}
 
-Bytes over the last ${recorded.length} commits on \`${opts.defaultBranch}\`${head ? ` and ${opts.headLabel}` : ""}, each chart's axis fitted to its own range. \u{1F3F7}\uFE0F marks tagged commits; the table has every size.
+Bytes per commit on \`${opts.defaultBranch}\`, each chart's axis fitted to its own range. \u{1F3F7}\uFE0F marks tags; the table has every size.
 
-${charts}
-${erroredNote}${otherConfigNote}
+#### ${releaseName && lastReleaseIndex !== -1 && comparable.length - lastReleaseIndex <= opts.length ? `since ${releaseName}` : `last ${recorded.length} commits`}${head ? ` and ${opts.headLabel}` : ""}
+
+${chartsOver(points, true)}
+${releasesSection}${erroredNote}${otherConfigNote}
 
 <details><summary>commits</summary>
 
@@ -33089,6 +33123,8 @@ var main = async () => {
     // per-commit history on an orphan branch, charted in the comment
     historyBranch: input("history-branch", ""),
     historyLength: Number(input("history-length", "30")),
+    historyReleases: Number(input("history-releases", "6")),
+    releaseTagPattern: input("release-tag-pattern", "^v?\\d+\\.\\d+\\.\\d+$"),
     backfill: input("backfill", ""),
     token: input("github-token", process.env["GITHUB_TOKEN"] ?? "")
   };
@@ -33167,7 +33203,12 @@ var main = async () => {
   const defaultBranch = event.repository?.default_branch ?? "main";
   const historyFile = historyFileFor(config.commentKey);
   const backfill = async () => {
-    const commits = backfillCommits(workspace, config.backfill, defaultBranch);
+    const commits = backfillCommits(
+      workspace,
+      config.backfill,
+      defaultBranch,
+      new RegExp(config.releaseTagPattern)
+    );
     const recorded = new Set(
       readHistory(workspace, config.historyBranch, historyFile).filter((e) => e.configHash === configHash).map((e) => e.sha)
     );
@@ -33312,6 +33353,8 @@ var main = async () => {
         prUrl: (n) => serverUrl && repo ? `${serverUrl}/${repo}/pull/${n}` : null,
         headLabel: event.pull_request ? "this PR" : "head",
         commentKey: config.commentKey,
+        isRelease: (tag) => new RegExp(config.releaseTagPattern).test(tag),
+        releases: config.historyReleases,
         charted: {
           visits: new Set(head.filter((r) => r.visitChart).map((r) => r.visit ?? 0)),
           rows: new Set(head.filter((r) => r.chart).map((r) => r.name))

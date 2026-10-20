@@ -147,14 +147,22 @@ the newest point, and a collapsed table linking each commit and its PR.
   can't link or show tooltips, so the collapsed table carries the links,
   messages and every size, charted or not. `chart` is presentation only: it
   doesn't affect which recorded commits are comparable.
+- **Two views:** the commits since the latest release (or the latest
+  `history-length` commits when no release is recorded), and the latest
+  `history-releases` releases side by side - each with the PR's head as the
+  newest point. Releases are tags matching `release-tag-pattern` (semver by
+  default); backfill `releases:6` to measure them.
 - **Comparability:** only commits measured under the same config (journey,
   compression, build command…) are charted together. Change the journey and
   the chart restarts; backfill to re-measure the past under the new config.
 
 ### Backfilling
 
-`backfill` measures past commits into the history instead of the usual report,
-eg from a manually dispatched run:
+`backfill` measures past commits into the history instead of the usual report.
+It takes a comma-separated list of ranges (`v26.0.0..main`), counts of the
+latest commits (`30`), the latest release tags (`releases:6`) and single refs
+(`v24.0.0`) - eg `"30, releases:6"`. Run it from a manually dispatched
+workflow:
 
 ```yaml
 on:

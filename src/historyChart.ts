@@ -19,6 +19,10 @@ export interface HistoryChartOptions {
   /** the journey's `chart` flags: visit indexes whose totals to chart and
    *  row names to chart. With neither set, every visit total is charted */
   charted: { visits: Set<number>; rows: Set<string> };
+  /** which tags are releases (eg v1.2.0 but not nightly) */
+  isRelease: (tag: string) => boolean;
+  /** how many releases the releases chart shows */
+  releases: number;
 }
 
 /**
@@ -110,6 +114,8 @@ const chartFor = (
   const firstIndex = raw.findIndex((v) => v !== undefined);
   const first = raw[firstIndex];
   const latest = raw.findLast((v) => v !== undefined);
+  // one measured point is no trend - and its "change" would read as ±0
+  if (raw.filter((v) => v !== undefined).length < 2) return "";
   if (first === undefined || latest === undefined) return "";
   // a gap (an errored row) holds the line level, since mermaid needs a value
   // at every point; it's marked ✗ and the table shows the error
@@ -170,7 +176,14 @@ export const formatHistory = (
   const otherConfig = new Set(
     entries.filter((e) => e.configHash !== opts.configHash).map((e) => e.sha),
   ).size;
-  const recorded = comparable.slice(-opts.length);
+  // the commits since the latest recorded release (inclusive), or the latest
+  // history-length commits when no release is recorded - capped either way
+  const lastReleaseIndex = comparable.findLastIndex((e) =>
+    (opts.tags.get(e.sha) ?? []).some(opts.isRelease),
+  );
+  const recorded = comparable
+    .slice(lastReleaseIndex === -1 ? 0 : lastReleaseIndex)
+    .slice(-opts.length);
   const points = head ? [...recorded, head] : recorded;
   const heading = `### 📈 history${opts.commentKey ? ` (${opts.commentKey})` : ""}`;
   const otherConfigNote =
@@ -184,37 +197,54 @@ export const formatHistory = (
     return `\n${heading}\n\n<sub>${comparable.length} commit(s) on \`${opts.defaultBranch}\` recorded so far - the chart appears once there are two points to join. Backfill to seed it.</sub>${otherConfigNote}\n`;
   }
 
-  const tagsAt = points.map((e) =>
-    e === head ? undefined : opts.tags.get(e.sha)?.join(", "),
-  );
-  // x labels must be unique for mermaid to place each point on its own band
-  const xLabels = points.map((e, i) =>
-    e === head ? opts.headLabel
-    : tagsAt[i] ? `🏷️ ${tagsAt[i]}`
-    : e.pr !== null ? `#${e.pr}`
-    : e.sha.slice(0, 7),
-  );
-
   const { totals, rows } = seriesFor(newest);
-  // with one row per visit, the rows chart would just repeat the totals
-  const chartsOf = (series: Series[], offset: number) =>
-    series
-      .map((sr, i) =>
-        chartFor(sr, palette[(offset + i) % palette.length]!, points, xLabels, tagsAt),
-      )
-      .filter(Boolean)
-      .join("\n\n");
   const flagged = opts.charted.visits.size + opts.charted.rows.size > 0;
-  const charts = chartsOf(
+  const chartedSeries =
     flagged ?
       [
         ...totals.filter((t) => t.visit !== undefined && opts.charted.visits.has(t.visit)),
         ...rows.filter((r) => opts.charted.rows.has(r.rowName!)),
       ]
-    : totals.filter((t) => t.visit !== undefined),
-    0,
-  );
+    : totals.filter((t) => t.visit !== undefined);
 
+  const tagsOf = (e: HistoryEntry) => (e === head ? [] : (opts.tags.get(e.sha) ?? []));
+  /** a chart per charted series over these points; labelTags puts the tag
+   *  names on the line as well as the axis (redundant when every point is one) */
+  const chartsOver = (over: HistoryEntry[], labelTags: boolean) => {
+    const tagsAt = over.map((e) => tagsOf(e).join(", ") || undefined);
+    // x labels must be unique for mermaid to place each point on its own band
+    const xLabels = over.map((e, i) =>
+      e === head ? opts.headLabel
+      : tagsAt[i] ? `🏷️ ${tagsAt[i]}`
+      : e.pr !== null ? `#${e.pr}`
+      : e.sha.slice(0, 7),
+    );
+    return chartedSeries
+      .map(
+        (sr, i) =>
+          chartFor(
+            sr,
+            palette[i % palette.length]!,
+            over,
+            xLabels,
+            labelTags ? tagsAt : over.map(() => undefined),
+          ) ||
+          `<sub>${sr.name}: fewer than two of these commits measured it, so there's no line to draw</sub>`,
+      )
+      .join("\n\n");
+  };
+
+  const releaseEntries = comparable.filter((e) => tagsOf(e).some(opts.isRelease));
+  const lastRelease = releaseEntries.at(-1);
+  const releaseName = lastRelease && tagsOf(lastRelease).find(opts.isRelease);
+  const releasePoints = [
+    ...releaseEntries.slice(-opts.releases),
+    ...(head ? [head] : []),
+  ];
+  const releasesSection =
+    releaseEntries.length >= (head ? 1 : 2) ?
+      `\n#### 🏷️ last ${Math.min(releaseEntries.length, opts.releases)} release(s)${head ? ` and ${opts.headLabel}` : ""}\n\n${chartsOver(releasePoints, false)}\n`
+    : `\n<sub>no recorded release yet for a releases chart - backfill \`releases:6\` to measure the latest releases</sub>\n`;
   const columns = [...totals, ...rows];
   const tableRows = [...points].reverse().map((e) => {
     const commitUrl = e === head ? null : opts.commitUrl(e.sha);
@@ -245,10 +275,12 @@ export const formatHistory = (
   return `
 ${heading}
 
-Bytes over the last ${recorded.length} commits on \`${opts.defaultBranch}\`${head ? ` and ${opts.headLabel}` : ""}, each chart's axis fitted to its own range. 🏷️ marks tagged commits; the table has every size.
+Bytes per commit on \`${opts.defaultBranch}\`, each chart's axis fitted to its own range. 🏷️ marks tags; the table has every size.
 
-${charts}
-${erroredNote}${otherConfigNote}
+#### ${releaseName && lastReleaseIndex !== -1 && comparable.length - lastReleaseIndex <= opts.length ? `since ${releaseName}` : `last ${recorded.length} commits`}${head ? ` and ${opts.headLabel}` : ""}
+
+${chartsOver(points, true)}
+${releasesSection}${erroredNote}${otherConfigNote}
 
 <details><summary>commits</summary>
 

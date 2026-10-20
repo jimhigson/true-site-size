@@ -169,6 +169,10 @@ export interface Config {
   historyBranch: string;
   /** how many recorded commits the history chart shows */
   historyLength: number;
+  /** how many releases the history's releases chart shows */
+  historyReleases: number;
+  /** regex picking which tags are releases */
+  releaseTagPattern: string;
   /** a commit range (A..B) or count (N) to measure into the history, instead
    *  of a normal head-vs-base run; empty for a normal run */
   backfill: string;

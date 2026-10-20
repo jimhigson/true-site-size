@@ -206,15 +206,18 @@ export const remoteTags = (workspace: string) => {
 };
 
 /**
- * the first-parent commits a backfill spec names, newest first (so a backfill
- * cut short still has the most recent history). The spec is a range "A..B"
- * whose ends resolve locally or on origin (eg "v26.0.0..main"), or a count N
- * of the default branch's most recent commits
+ * the commits a backfill spec names, newest first within each part (so a
+ * backfill cut short still has the most recent history). The spec is a comma-
+ * separated list of: a range "A..B" of first-parent commits, whose ends
+ * resolve locally or on origin (eg "v26.0.0..main"); a count N of the default
+ * branch's latest commits; "releases:N", the latest N release tags on the
+ * default branch; or a single ref (eg "v24.0.0")
  */
 export const backfillCommits = (
   workspace: string,
   spec: string,
   defaultBranch: string,
+  releaseTag: RegExp,
 ) => {
   // ci checkouts are shallow and carry only the triggering ref; a range needs
   // real history, its tags, and the default branch to resolve against
@@ -233,20 +236,32 @@ export const backfillCommits = (
     }
     throw new Error(`backfill: cannot resolve "${name}" to a commit`);
   };
-  const trimmed = spec.trim();
-  const revs =
-    /^\d+$/.test(trimmed) ?
-      `--max-count=${trimmed} origin/${defaultBranch}`
-    : (() => {
-        const [from, to] = trimmed.split("..");
-        if (!from || !to) {
-          throw new Error(
-            `backfill: expected a range "A..B" or a commit count, got "${spec}"`,
-          );
-        }
-        return `${resolve(from)}..${resolve(to)}`;
-      })();
-  return gitOut(`git rev-list --first-parent ${revs}`, workspace)
-    .split("\n")
-    .filter(Boolean);
+  const firstParents = (revs: string) =>
+    gitOut(`git rev-list --first-parent ${revs}`, workspace)
+      .split("\n")
+      .filter(Boolean);
+  const commitsOf = (part: string): string[] => {
+    if (/^\d+$/.test(part)) {
+      return firstParents(`--max-count=${part} origin/${defaultBranch}`);
+    }
+    const releases = /^releases:(\d+)$/.exec(part);
+    if (releases) {
+      return gitOut(
+        `git tag --merged origin/${defaultBranch} --sort=-v:refname`,
+        workspace,
+      )
+        .split("\n")
+        .filter((tag) => releaseTag.test(tag))
+        .slice(0, Number(releases[1]))
+        .map(resolve);
+    }
+    if (part.includes("..")) {
+      const [from, to] = part.split("..");
+      if (!from || !to) throw new Error(`backfill: incomplete range "${part}"`);
+      return firstParents(`${resolve(from)}..${resolve(to)}`);
+    }
+    return [resolve(part)];
+  };
+  const parts = spec.split(",").map((p) => p.trim()).filter(Boolean);
+  return [...new Set(parts.flatMap(commitsOf))];
 };

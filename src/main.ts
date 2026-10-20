@@ -142,6 +142,8 @@ const main = async () => {
     // per-commit history on an orphan branch, charted in the comment
     historyBranch: input("history-branch", ""),
     historyLength: Number(input("history-length", "30")),
+    historyReleases: Number(input("history-releases", "6")),
+    releaseTagPattern: input("release-tag-pattern", "^v?\\d+\\.\\d+\\.\\d+$"),
     backfill: input("backfill", ""),
     token: input("github-token", process.env["GITHUB_TOKEN"] ?? ""),
   };
@@ -267,7 +269,12 @@ const main = async () => {
    * emitted its marks) is recorded as an error, not retried on every run.
    */
   const backfill = async () => {
-    const commits = backfillCommits(workspace, config.backfill, defaultBranch);
+    const commits = backfillCommits(
+      workspace,
+      config.backfill,
+      defaultBranch,
+      new RegExp(config.releaseTagPattern),
+    );
     const recorded = new Set(
       readHistory(workspace, config.historyBranch, historyFile)
         .filter((e) => e.configHash === configHash)
@@ -459,6 +466,8 @@ const main = async () => {
         prUrl: (n) => (serverUrl && repo ? `${serverUrl}/${repo}/pull/${n}` : null),
         headLabel: event.pull_request ? "this PR" : "head",
         commentKey: config.commentKey,
+        isRelease: (tag) => new RegExp(config.releaseTagPattern).test(tag),
+        releases: config.historyReleases,
         charted: {
           visits: new Set(head.filter((r) => r.visitChart).map((r) => r.visit ?? 0)),
           rows: new Set(head.filter((r) => r.chart).map((r) => r.name)),

@@ -168,12 +168,21 @@ inputs:
   history-length:
     description: how many recorded commits the history chart shows
     default: "30"
+  history-releases:
+    description: how many releases the history's releases chart shows
+    default: "6"
+  release-tag-pattern:
+    description: >
+      regex picking which tags are releases, for the history's
+      since-the-last-release and releases charts
+    default: "^v?\\d+\\.\\d+\\.\\d+$"
   backfill:
     description: >
-      measure a range of past commits into history-branch instead of the
-      usual head-vs-base report - a range "A..B" (eg "v26.0.0..main") of
-      first-parent commits, or a count N of the default branch's latest.
-      Newest first; commits already recorded are skipped and each is pushed as
+      measure past commits into history-branch instead of the usual
+      head-vs-base report - a comma-separated list of ranges "A..B" (eg
+      "v26.0.0..main") of first-parent commits, a count N of the default
+      branch's latest, "releases:N" for the latest N release tags, or single
+      refs. Newest first; commits already recorded are skipped and each is pushed as
       measured, so rerunning continues a backfill that ran out of timeout-ms.
     default: ""
   github-token:
@@ -221,5 +230,7 @@ runs:
         INPUT_MINIMUM_CHANGE_THRESHOLD: ${{ inputs.minimum-change-threshold }}
         INPUT_HISTORY_BRANCH: ${{ inputs.history-branch }}
         INPUT_HISTORY_LENGTH: ${{ inputs.history-length }}
+        INPUT_HISTORY_RELEASES: ${{ inputs.history-releases }}
+        INPUT_RELEASE_TAG_PATTERN: ${{ inputs.release-tag-pattern }}
         INPUT_BACKFILL: ${{ inputs.backfill }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
