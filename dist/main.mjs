@@ -32103,6 +32103,7 @@ var seriesFor = (newest) => {
     const names = newest.rows.filter((r) => (r.visit ?? 0) === v).map((r) => r.name);
     const visitName = newest.rows.find((r) => (r.visit ?? 0) === v)?.visitName;
     return {
+      visit: v,
       name: `total${visitName ? ` (${visitName})` : visits.length > 1 ? ` (visit ${v + 1})` : ""}`,
       valueOf: (e) => {
         const bytes = names.map((n) => e.rows.find((r) => r.name === n)?.bytes);
@@ -32114,6 +32115,7 @@ var seriesFor = (newest) => {
     totals.push({ name: "\u{1F4BE} on disk", valueOf: (e) => e.disk ?? void 0 });
   }
   const rows = newest.rows.map((r) => ({
+    rowName: r.name,
     name: `${r.emoji ? `${r.emoji} ` : ""}${r.name}`,
     valueOf: (e) => e.rows.find((x) => x.name === r.name)?.bytes
   }));
@@ -32195,14 +32197,14 @@ ${heading}
   const chartsOf = (series, offset) => series.map(
     (sr, i) => chartFor(sr, palette[(offset + i) % palette.length], points, xLabels, tagsAt)
   ).filter(Boolean).join("\n\n");
-  const totalCharts = chartsOf(totals, 0);
-  const rowCharts = rows.length > totals.filter((t) => t.name !== "\u{1F4BE} on disk").length ? `
-
-<details><summary>per row</summary>
-
-${chartsOf(rows, totals.length)}
-
-</details>` : "";
+  const flagged = opts.charted.visits.size + opts.charted.rows.size > 0;
+  const charts = chartsOf(
+    flagged ? [
+      ...totals.filter((t) => t.visit !== void 0 && opts.charted.visits.has(t.visit)),
+      ...rows.filter((r) => opts.charted.rows.has(r.rowName))
+    ] : totals.filter((t) => t.visit !== void 0),
+    0
+  );
   const columns = [...totals, ...rows];
   const tableRows = [...points].reverse().map((e) => {
     const commitUrl = e === head ? null : opts.commitUrl(e.sha);
@@ -32224,9 +32226,9 @@ ${chartsOf(rows, totals.length)}
   return `
 ${heading}
 
-Bytes over the last ${recorded.length} commits on \`${opts.defaultBranch}\`${head ? ` and ${opts.headLabel}` : ""}, one chart per total, each axis fitted to its own range. \u{1F3F7}\uFE0F marks tagged commits.
+Bytes over the last ${recorded.length} commits on \`${opts.defaultBranch}\`${head ? ` and ${opts.headLabel}` : ""}, each chart's axis fitted to its own range. \u{1F3F7}\uFE0F marks tagged commits; the table has every size.
 
-${totalCharts}${rowCharts}
+${charts}
 ${erroredNote}${otherConfigNote}
 
 <details><summary>commits</summary>
@@ -32877,8 +32879,9 @@ var splitIntoVisits = (steps) => {
       const current = visits[visits.length - 1];
       if (current.steps.length === 0) {
         current.name = name;
+        current.chart = step.chart;
       } else {
-        visits.push({ name, steps: [] });
+        visits.push({ name, steps: [], chart: step.chart });
       }
     } else {
       visits[visits.length - 1].steps.push(step);
@@ -32915,7 +32918,11 @@ var measure = async (steps, {
     (visit, vi) => aggregateRuns(runsByVisit[vi]).map((row) => ({
       ...row,
       visit: vi,
-      ...visit.name !== void 0 && { visitName: visit.name }
+      ...visit.name !== void 0 && { visitName: visit.name },
+      ...visit.chart && { visitChart: true },
+      ...visit.steps.find((s) => s.row === row.name)?.chart && {
+        chart: true
+      }
     }))
   );
 };
@@ -33132,7 +33139,8 @@ var main = async () => {
   };
   const configHash = createHash2("sha256").update(
     JSON.stringify({
-      steps: config.steps,
+      // `chart` only picks what the history draws, not what's measured
+      steps: config.steps.map(({ chart: _, ...step }) => step),
       compression: config.compression,
       compressionLevel: config.compressionLevel,
       runs: config.runs,
@@ -33303,7 +33311,11 @@ var main = async () => {
         commitUrl: (s) => serverUrl && repo ? `${serverUrl}/${repo}/commit/${s}` : null,
         prUrl: (n) => serverUrl && repo ? `${serverUrl}/${repo}/pull/${n}` : null,
         headLabel: event.pull_request ? "this PR" : "head",
-        commentKey: config.commentKey
+        commentKey: config.commentKey,
+        charted: {
+          visits: new Set(head.filter((r) => r.visitChart).map((r) => r.visit ?? 0)),
+          rows: new Set(head.filter((r) => r.chart).map((r) => r.name))
+        }
       });
     } catch (e) {
       console.warn(`[true-site-size] history unavailable: ${e.message}`);

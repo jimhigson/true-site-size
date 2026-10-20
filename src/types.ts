@@ -54,6 +54,10 @@ export interface RowResult {
   visit?: number;
   /** the visit's name (a `startAgain` step's value), labelling its total row */
   visitName?: string;
+  /** present (true) when the row's step asked to be charted in the history */
+  chart?: true;
+  /** present (true) when the row's visit asked for its total to be charted */
+  visitChart?: true;
   /** set when the row could not be measured (may be assigned undefined) */
   error?: string | undefined;
 }
@@ -94,6 +98,10 @@ export interface JourneyStep {
   startAgain?: true | string;
   /** wait for this app-readiness mark before the step runs */
   afterMark?: string;
+  /** on a `row` step, chart the row in the history; on a `startAgain`
+   *  step, chart the visit's total. With none set, every visit total is
+   *  charted. Presentation only - left out of the config hash */
+  chart?: boolean;
 }
 
 /** the whole-site-on-disk size result (every file, compressed as served) */

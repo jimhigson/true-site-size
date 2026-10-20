@@ -25,7 +25,10 @@ inputs:
       journey can measure several apps served from the same build: rows after
       it accumulate as a new visit with its own cumulative Σ rows and total;
       as the journey's first step it just names the first visit. Any step may
-      carry afterMark to await an app readiness mark first. Takes precedence
+      carry afterMark to await an app readiness mark first. With
+      history-branch set, "chart": true on a row step charts that row in the
+      history, and on a startAgain step charts the visit's total (with none
+      set, every visit total is charted). Takes precedence
       over `scenarios`.
     default: ""
   ignore-url-patterns:

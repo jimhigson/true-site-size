@@ -211,7 +211,8 @@ const main = async () => {
   const configHash = createHash("sha256")
     .update(
       JSON.stringify({
-        steps: config.steps,
+        // `chart` only picks what the history draws, not what's measured
+        steps: config.steps.map(({ chart: _, ...step }) => step),
         compression: config.compression,
         compressionLevel: config.compressionLevel,
         runs: config.runs,
@@ -458,6 +459,10 @@ const main = async () => {
         prUrl: (n) => (serverUrl && repo ? `${serverUrl}/${repo}/pull/${n}` : null),
         headLabel: event.pull_request ? "this PR" : "head",
         commentKey: config.commentKey,
+        charted: {
+          visits: new Set(head.filter((r) => r.visitChart).map((r) => r.visit ?? 0)),
+          rows: new Set(head.filter((r) => r.chart).map((r) => r.name)),
+        },
       });
     } catch (e) {
       console.warn(`[true-site-size] history unavailable: ${(e as Error).message}`);

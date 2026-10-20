@@ -16,6 +16,9 @@ export interface HistoryChartOptions {
   /** what to call the unrecorded head point (eg "this PR") */
   headLabel: string;
   commentKey: string;
+  /** the journey's `chart` flags: visit indexes whose totals to chart and
+   *  row names to chart. With neither set, every visit total is charted */
+  charted: { visits: Set<number>; rows: Set<string> };
 }
 
 /**
@@ -39,6 +42,9 @@ const palette = [
 /** a plotted quantity: its legend name and how to read it from a point */
 interface Series {
   name: string;
+  /** the visit a total sums, or the row's name - what `chart` flags select */
+  visit?: number;
+  rowName?: string;
   valueOf: (e: HistoryEntry) => number | undefined;
 }
 
@@ -65,6 +71,7 @@ const seriesFor = (newest: HistoryEntry) => {
     const names = newest.rows.filter((r) => (r.visit ?? 0) === v).map((r) => r.name);
     const visitName = newest.rows.find((r) => (r.visit ?? 0) === v)?.visitName;
     return {
+      visit: v,
       name: `total${visitName ? ` (${visitName})` : visits.length > 1 ? ` (visit ${v + 1})` : ""}`,
       valueOf: (e) => {
         const bytes = names.map((n) => e.rows.find((r) => r.name === n)?.bytes);
@@ -78,6 +85,7 @@ const seriesFor = (newest: HistoryEntry) => {
     totals.push({ name: "💾 on disk", valueOf: (e) => e.disk ?? undefined });
   }
   const rows: Series[] = newest.rows.map((r) => ({
+    rowName: r.name,
     name: `${r.emoji ? `${r.emoji} ` : ""}${r.name}`,
     valueOf: (e) => e.rows.find((x) => x.name === r.name)?.bytes,
   }));
@@ -196,12 +204,16 @@ export const formatHistory = (
       )
       .filter(Boolean)
       .join("\n\n");
-  const totalCharts = chartsOf(totals, 0);
-  // with one row per visit, the row charts would just repeat the totals
-  const rowCharts =
-    rows.length > totals.filter((t) => t.name !== "💾 on disk").length ?
-      `\n\n<details><summary>per row</summary>\n\n${chartsOf(rows, totals.length)}\n\n</details>`
-    : "";
+  const flagged = opts.charted.visits.size + opts.charted.rows.size > 0;
+  const charts = chartsOf(
+    flagged ?
+      [
+        ...totals.filter((t) => t.visit !== undefined && opts.charted.visits.has(t.visit)),
+        ...rows.filter((r) => opts.charted.rows.has(r.rowName!)),
+      ]
+    : totals.filter((t) => t.visit !== undefined),
+    0,
+  );
 
   const columns = [...totals, ...rows];
   const tableRows = [...points].reverse().map((e) => {
@@ -233,9 +245,9 @@ export const formatHistory = (
   return `
 ${heading}
 
-Bytes over the last ${recorded.length} commits on \`${opts.defaultBranch}\`${head ? ` and ${opts.headLabel}` : ""}, one chart per total, each axis fitted to its own range. 🏷️ marks tagged commits.
+Bytes over the last ${recorded.length} commits on \`${opts.defaultBranch}\`${head ? ` and ${opts.headLabel}` : ""}, each chart's axis fitted to its own range. 🏷️ marks tagged commits; the table has every size.
 
-${totalCharts}${rowCharts}
+${charts}
 ${erroredNote}${otherConfigNote}
 
 <details><summary>commits</summary>

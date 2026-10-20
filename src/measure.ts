@@ -609,6 +609,8 @@ export const runJourney = async (
 interface Visit {
   name: string | undefined;
   steps: JourneyStep[];
+  /** the visit's `startAgain` step asked for its total to be charted */
+  chart?: boolean | undefined;
 }
 
 /**
@@ -627,8 +629,9 @@ const splitIntoVisits = (steps: JourneyStep[]): Visit[] => {
       const current = visits[visits.length - 1]!;
       if (current.steps.length === 0) {
         current.name = name;
+        current.chart = step.chart;
       } else {
-        visits.push({ name, steps: [] });
+        visits.push({ name, steps: [], chart: step.chart });
       }
     } else {
       visits[visits.length - 1]!.steps.push(step);
@@ -682,6 +685,10 @@ export const measure = async (
       ...row,
       visit: vi,
       ...(visit.name !== undefined && { visitName: visit.name }),
+      ...(visit.chart && { visitChart: true as const }),
+      ...(visit.steps.find((s) => s.row === row.name)?.chart && {
+        chart: true as const,
+      }),
     })),
   );
 };
