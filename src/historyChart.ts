@@ -1,6 +1,6 @@
 import { formatBytes } from "./formatBytes.ts";
 
-import type { HistoryEntry } from "./types.ts";
+import type { HistoryEntry, HistoryRow } from "./types.ts";
 
 export interface HistoryChartOptions {
   /** only entries measured under this config are comparable */
@@ -16,9 +16,10 @@ export interface HistoryChartOptions {
   /** what to call the unrecorded head point (eg "this PR") */
   headLabel: string;
   commentKey: string;
-  /** the journey's `chart` flags: visit indexes whose totals to chart and
-   *  row names to chart. With neither set, every visit total is charted */
-  charted: { visits: Set<number>; rows: Set<string> };
+  /** the journey's `chart` flags: visit indexes whose totals to chart, and
+   *  row names to chart as their own bytes (true) or their visit's running
+   *  total (cumulative). With neither set, every visit total is charted */
+  charted: { visits: Set<number>; rows: Map<string, true | "cumulative"> };
   /** which tags are releases (eg v1.2.0 but not nightly) */
   isRelease: (tag: string) => boolean;
   /** how many releases the releases chart shows */
@@ -88,12 +89,30 @@ const seriesFor = (newest: HistoryEntry) => {
   if (newest.disk !== null) {
     totals.push({ name: "💾 on disk", valueOf: (e) => e.disk ?? undefined });
   }
+  const badge = (r: HistoryRow) => `${r.emoji ? `${r.emoji} ` : ""}${r.name}`;
   const rows: Series[] = newest.rows.map((r) => ({
     rowName: r.name,
-    name: `${r.emoji ? `${r.emoji} ` : ""}${r.name}`,
+    name: badge(r),
     valueOf: (e) => e.rows.find((x) => x.name === r.name)?.bytes,
   }));
-  return { totals, rows };
+  /** each row's visit running total: its visit's rows up to and including it */
+  const cumulatives: Series[] = newest.rows.map((r, i) => {
+    const names = newest.rows
+      .slice(0, i + 1)
+      .filter((x) => (x.visit ?? 0) === (r.visit ?? 0))
+      .map((x) => x.name);
+    return {
+      rowName: r.name,
+      name: `Σ ${badge(r)}`,
+      valueOf: (e) => {
+        const bytes = names.map((n) => e.rows.find((x) => x.name === n)?.bytes);
+        return bytes.every((b) => b !== undefined) ?
+            bytes.reduce((sum, b) => sum + b, 0)
+          : undefined;
+      },
+    };
+  });
+  return { totals, rows, cumulatives };
 };
 
 /**
@@ -197,13 +216,14 @@ export const formatHistory = (
     return `\n${heading}\n\n<sub>${comparable.length} commit(s) on \`${opts.defaultBranch}\` recorded so far - the chart appears once there are two points to join. Backfill to seed it.</sub>${otherConfigNote}\n`;
   }
 
-  const { totals, rows } = seriesFor(newest);
+  const { totals, rows, cumulatives } = seriesFor(newest);
   const flagged = opts.charted.visits.size + opts.charted.rows.size > 0;
   const chartedSeries =
     flagged ?
       [
         ...totals.filter((t) => t.visit !== undefined && opts.charted.visits.has(t.visit)),
-        ...rows.filter((r) => opts.charted.rows.has(r.rowName!)),
+        ...rows.filter((r) => opts.charted.rows.get(r.rowName!) === true),
+        ...cumulatives.filter((c) => opts.charted.rows.get(c.rowName!) === "cumulative"),
       ]
     : totals.filter((t) => t.visit !== undefined);
 
@@ -245,7 +265,8 @@ export const formatHistory = (
     releaseEntries.length >= (head ? 1 : 2) ?
       `\n#### 🏷️ last ${Math.min(releaseEntries.length, opts.releases)} release(s)${head ? ` and ${opts.headLabel}` : ""}\n\n${chartsOver(releasePoints, false)}\n`
     : `\n<sub>no recorded release yet for a releases chart - backfill \`releases:6\` to measure the latest releases</sub>\n`;
-  const columns = [...totals, ...rows];
+  // charted series lead, so a cumulative charted line has its column too
+  const columns = [...new Set([...chartedSeries, ...totals, ...rows])];
   const tableRows = [...points].reverse().map((e) => {
     const commitUrl = e === head ? null : opts.commitUrl(e.sha);
     const commit =

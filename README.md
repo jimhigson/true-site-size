@@ -195,8 +195,8 @@ It walks the range's first-parent commits (one per merged PR) newest first,
 pushes each result as soon as it's measured and skips commits already recorded,
 so a backfill that runs out of `timeout-ms` (it stops cleanly before starting a
 commit that would overrun) continues where it left off when rerun. A commit
-that can't be built or measured - too old for today's toolchain, or from before
-the app emitted its marks - is recorded as a gap rather than retried.
+that can't be built is recorded as a gap and retried by the next backfill; one
+that builds but misses marks it predates keeps its gaps.
 
 ## Journeys: measuring interaction, not just navigation
 
@@ -363,7 +363,7 @@ Only fully-successful base measurements are cached.
 | `scenarios` | — | sugar: JSON array of `{name, url, mark}`, each a goto+row |
 | `install-command` | `""` | run in each checkout before building (empty skips) |
 | `build-command` | `npm run build` | produces the site (empty skips) |
-| `clean-command` | `""` | run in the workspace between the head and base builds to isolate them, eg `pnpm clean` — the base builds in a workspace subdir and can otherwise inherit head's `node_modules` |
+| `clean-command` | `""` | run in the workspace between the head and base builds, eg `pnpm clean` — bases build in a worktree outside the workspace, so this is only for builds that reach the workspace by other means |
 | `serve-dir` | `dist` | directory served after building |
 | `compression` | `gzip` | simulate the host: `gzip`, `br`, `zstd` or `none` (`zstd` needs Node ≥ 22.15) |
 | `compression-level` | per codec | level for the chosen encoding, or `max`; ranges gzip 0–9, br 0–11, zstd 1–22; empty uses gzip 8 / br 4 / zstd 6 |
@@ -408,8 +408,8 @@ they can be set for local/advanced runs (eg under [`act`](https://github.com/nek
 ## Running locally under act
 
 Measuring a base ref writes to the workspace: it runs `clean-command` there
-(often `rm -rf dist node_modules`) and checks the base out into a git worktree
-at `.true-site-size-base` inside it. On a runner that is a throwaway checkout;
+(often `rm -rf dist node_modules`) and registers a git worktree in its
+repository (checked out under the runner's temp dir). On a runner that is a throwaway checkout;
 under [`act --bind`](https://github.com/nektos/act) the workspace is your own
 working directory, where neither is welcome. So whenever `$ACT` is set the base
 comparison is skipped and the report covers head alone, saying so in place of

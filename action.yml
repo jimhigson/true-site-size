@@ -76,9 +76,10 @@ inputs:
   clean-command:
     description: >
       command run in the workspace between the head and base builds (empty to
-      skip). The base checks out into a worktree inside the workspace, so
-      without this its build can inherit head's node_modules via upward module
-      resolution; eg "pnpm clean" isolates them.
+      skip), eg "pnpm clean". Bases build in a worktree outside the workspace,
+      so upward resolution (node_modules, pnpm-workspace.yaml) already can't
+      reach head's state - this is for builds that reach the workspace by
+      other means.
     default: ""
   serve-dir:
     description: directory (relative to the checkout) to serve after building

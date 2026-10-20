@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { formatComment, postComment } from "./comment.ts";
@@ -236,12 +236,16 @@ const main = async () => {
       join(homedir(), ".true-site-size-cache")
     : null);
 
-  // clear head's build state from the workspace before the first base build.
-  // each base checks out into a worktree *inside* the workspace, so node's
-  // upward module resolution (and npm's ancestor node_modules/.bin) would
-  // otherwise let a base build silently inherit head's installed deps - leaking
-  // head into the base measurement. Run once: once removed it stays removed.
-  // eg clean-command: pnpm clean
+  // base and backfill commits check out as worktrees *outside* the workspace:
+  // anything resolved upward from a checkout inside it - node's modules, npm's
+  // ancestor node_modules/.bin, pnpm's pnpm-workspace.yaml (and with it the
+  // packageManager pin it governs by) - would otherwise come from head and leak
+  // into the base's build
+  const baseDir = join(process.env["RUNNER_TEMP"] ?? tmpdir(), "true-site-size-base");
+
+  // optionally clear head's build state from the workspace before the first
+  // base build, for builds that reach the workspace by other means. Run once:
+  // once removed it stays removed. eg clean-command: pnpm clean
   let cleaned = false;
   const cleanOnce = () => {
     if (config.cleanCommand && !cleaned) {
@@ -266,7 +270,10 @@ const main = async () => {
    * result is pushed as soon as it's measured, so a run cut short - or several
    * runs sharing a long range - pick up where the last left off. A commit that
    * can't be built (too old for today's toolchain, or from before the app
-   * emitted its marks) is recorded as an error, not retried on every run.
+   * emitted its marks) is recorded with its error. A commit that failed to
+   * build at all is retried by the next backfill, since a fix to the
+   * toolchain or this action may let it build; one that built but missed
+   * some marks is not.
    */
   const backfill = async () => {
     const commits = backfillCommits(
@@ -277,7 +284,7 @@ const main = async () => {
     );
     const recorded = new Set(
       readHistory(workspace, config.historyBranch, historyFile)
-        .filter((e) => e.configHash === configHash)
+        .filter((e) => e.configHash === configHash && !e.error)
         .map((e) => e.sha),
     );
     const todo = commits.filter((sha) => !recorded.has(sha));
@@ -299,11 +306,10 @@ const main = async () => {
         `[true-site-size] backfill ${i + 1}/${todo.length}: measuring ${sha.slice(0, 9)}...`,
       );
       cleanOnce();
-      const dir = join(workspace, ".true-site-size-base");
       let entry: HistoryEntry;
       try {
-        addBaseWorktree(workspace, dir, sha);
-        const built = await buildAndMeasure(dir, config);
+        addBaseWorktree(workspace, baseDir, sha);
+        const built = await buildAndMeasure(baseDir, config);
         logBreakdown(`backfill ${sha.slice(0, 9)}`, built.results);
         entry = historyEntry(workspace, sha, configHash, built);
       } catch (e) {
@@ -314,7 +320,7 @@ const main = async () => {
           error: (e as Error).message,
         });
       } finally {
-        removeBaseWorktree(workspace, dir);
+        removeBaseWorktree(workspace, baseDir);
       }
       appendHistory(workspace, config.historyBranch, historyFile, [entry]);
       slowestMs = Math.max(slowestMs, Date.now() - commitStarted);
@@ -403,7 +409,6 @@ const main = async () => {
 
     console.log(`[true-site-size] measuring base (${ref})...`);
     cleanOnce();
-    const baseDir = join(workspace, ".true-site-size-base");
     try {
       addBaseWorktree(workspace, baseDir, "FETCH_HEAD");
       const built = await buildAndMeasure(baseDir, config);
@@ -470,7 +475,9 @@ const main = async () => {
         releases: config.historyReleases,
         charted: {
           visits: new Set(head.filter((r) => r.visitChart).map((r) => r.visit ?? 0)),
-          rows: new Set(head.filter((r) => r.chart).map((r) => r.name)),
+          rows: new Map(
+            head.flatMap((r) => (r.chart ? [[r.name, r.chart] as const] : [])),
+          ),
         },
       });
     } catch (e) {

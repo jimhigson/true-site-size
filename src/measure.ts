@@ -629,9 +629,9 @@ const splitIntoVisits = (steps: JourneyStep[]): Visit[] => {
       const current = visits[visits.length - 1]!;
       if (current.steps.length === 0) {
         current.name = name;
-        current.chart = step.chart;
+        current.chart = Boolean(step.chart);
       } else {
-        visits.push({ name, steps: [], chart: step.chart });
+        visits.push({ name, steps: [], chart: Boolean(step.chart) });
       }
     } else {
       visits[visits.length - 1]!.steps.push(step);
@@ -681,15 +681,16 @@ export const measure = async (
     }
   }
   return visits.flatMap((visit, vi) =>
-    aggregateRuns(runsByVisit[vi]!).map((row) => ({
-      ...row,
-      visit: vi,
-      ...(visit.name !== undefined && { visitName: visit.name }),
-      ...(visit.chart && { visitChart: true as const }),
-      ...(visit.steps.find((s) => s.row === row.name)?.chart && {
-        chart: true as const,
-      }),
-    })),
+    aggregateRuns(runsByVisit[vi]!).map((row) => {
+      const chart = visit.steps.find((s) => s.row === row.name)?.chart;
+      return {
+        ...row,
+        visit: vi,
+        ...(visit.name !== undefined && { visitName: visit.name }),
+        ...(visit.chart && { visitChart: true as const }),
+        ...(chart && { chart }),
+      };
+    }),
   );
 };
 

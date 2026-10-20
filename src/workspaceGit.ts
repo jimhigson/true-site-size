@@ -21,14 +21,14 @@ const gitIsUsable = (workspace: string) => {
 /**
  * why base refs cannot be measured in this workspace, or null when they can.
  * Measuring a base is destructive - it runs clean-command in the workspace and
- * adds a git worktree inside it - which is what a throwaway ci checkout is
- * for, and exactly what a developer's live checkout must be spared. A
+ * registers a git worktree in its repository - which is what a throwaway ci
+ * checkout is for, and exactly what a developer's live checkout must be spared. A
  * head-only report is far more use than a failed job, so both answers here
  * degrade the run rather than ending it.
  */
 export const baseComparisonBlocker = (workspace: string): string | null => {
   if (process.env["ACT"] && !process.env["TRUE_SITE_SIZE_ALLOW_DESTRUCTIVE"]) {
-    return "running locally under act, where the workspace can be your own working directory (`act --bind`) - measuring a base would run clean-command in it and add a git worktree inside it. Set TRUE_SITE_SIZE_ALLOW_DESTRUCTIVE=1 to compare anyway, on a checkout you are happy to lose";
+    return "running locally under act, where the workspace can be your own working directory (`act --bind`) - measuring a base would run clean-command in it and register a git worktree in its repository. Set TRUE_SITE_SIZE_ALLOW_DESTRUCTIVE=1 to compare anyway, on a checkout you are happy to lose";
   }
   if (!gitIsUsable(workspace)) {
     return "the workspace is not a usable git repository (a git worktree checkout, whose .git file points at a gitdir that is not here?)";

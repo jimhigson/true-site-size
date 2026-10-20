@@ -31601,7 +31601,7 @@ var require_chrome_remote_interface = __commonJS({
 import { createHash as createHash2 } from "node:crypto";
 import { execSync as execSync3 } from "node:child_process";
 import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync2, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir as tmpdir2 } from "node:os";
 import { join as join3, resolve } from "node:path";
 
 // src/formatBytes.ts
@@ -32124,12 +32124,24 @@ var seriesFor = (newest) => {
   if (newest.disk !== null) {
     totals.push({ name: "\u{1F4BE} on disk", valueOf: (e) => e.disk ?? void 0 });
   }
+  const badge = (r) => `${r.emoji ? `${r.emoji} ` : ""}${r.name}`;
   const rows = newest.rows.map((r) => ({
     rowName: r.name,
-    name: `${r.emoji ? `${r.emoji} ` : ""}${r.name}`,
+    name: badge(r),
     valueOf: (e) => e.rows.find((x) => x.name === r.name)?.bytes
   }));
-  return { totals, rows };
+  const cumulatives = newest.rows.map((r, i) => {
+    const names = newest.rows.slice(0, i + 1).filter((x) => (x.visit ?? 0) === (r.visit ?? 0)).map((x) => x.name);
+    return {
+      rowName: r.name,
+      name: `\u03A3 ${badge(r)}`,
+      valueOf: (e) => {
+        const bytes = names.map((n) => e.rows.find((x) => x.name === n)?.bytes);
+        return bytes.every((b) => b !== void 0) ? bytes.reduce((sum, b) => sum + b, 0) : void 0;
+      }
+    };
+  });
+  return { totals, rows, cumulatives };
 };
 var chartFor = (series, colour, points, xLabels, tagsAt) => {
   const raw = points.map(series.valueOf);
@@ -32201,11 +32213,12 @@ ${heading}
 <sub>${comparable.length} commit(s) on \`${opts.defaultBranch}\` recorded so far - the chart appears once there are two points to join. Backfill to seed it.</sub>${otherConfigNote}
 `;
   }
-  const { totals, rows } = seriesFor(newest);
+  const { totals, rows, cumulatives } = seriesFor(newest);
   const flagged = opts.charted.visits.size + opts.charted.rows.size > 0;
   const chartedSeries = flagged ? [
     ...totals.filter((t) => t.visit !== void 0 && opts.charted.visits.has(t.visit)),
-    ...rows.filter((r) => opts.charted.rows.has(r.rowName))
+    ...rows.filter((r) => opts.charted.rows.get(r.rowName) === true),
+    ...cumulatives.filter((c) => opts.charted.rows.get(c.rowName) === "cumulative")
   ] : totals.filter((t) => t.visit !== void 0);
   const tagsOf = (e) => e === head ? [] : opts.tags.get(e.sha) ?? [];
   const chartsOver = (over, labelTags) => {
@@ -32237,7 +32250,7 @@ ${chartsOver(releasePoints, false)}
 ` : `
 <sub>no recorded release yet for a releases chart - backfill \`releases:6\` to measure the latest releases</sub>
 `;
-  const columns = [...totals, ...rows];
+  const columns = [.../* @__PURE__ */ new Set([...chartedSeries, ...totals, ...rows])];
   const tableRows = [...points].reverse().map((e) => {
     const commitUrl = e === head ? null : opts.commitUrl(e.sha);
     const commit = e === head ? `*${opts.headLabel}*` : commitUrl ? `[\`${e.sha.slice(0, 7)}\`](${commitUrl})` : `\`${e.sha.slice(0, 7)}\``;
@@ -32913,9 +32926,9 @@ var splitIntoVisits = (steps) => {
       const current = visits[visits.length - 1];
       if (current.steps.length === 0) {
         current.name = name;
-        current.chart = step.chart;
+        current.chart = Boolean(step.chart);
       } else {
-        visits.push({ name, steps: [], chart: step.chart });
+        visits.push({ name, steps: [], chart: Boolean(step.chart) });
       }
     } else {
       visits[visits.length - 1].steps.push(step);
@@ -32949,15 +32962,16 @@ var measure = async (steps, {
     }
   }
   return visits.flatMap(
-    (visit, vi) => aggregateRuns(runsByVisit[vi]).map((row) => ({
-      ...row,
-      visit: vi,
-      ...visit.name !== void 0 && { visitName: visit.name },
-      ...visit.chart && { visitChart: true },
-      ...visit.steps.find((s) => s.row === row.name)?.chart && {
-        chart: true
-      }
-    }))
+    (visit, vi) => aggregateRuns(runsByVisit[vi]).map((row) => {
+      const chart = visit.steps.find((s) => s.row === row.name)?.chart;
+      return {
+        ...row,
+        visit: vi,
+        ...visit.name !== void 0 && { visitName: visit.name },
+        ...visit.chart && { visitChart: true },
+        ...chart && { chart }
+      };
+    })
   );
 };
 var aggregateRuns = (allRuns) => {
@@ -32999,7 +33013,7 @@ var gitIsUsable = (workspace) => {
 };
 var baseComparisonBlocker = (workspace) => {
   if (process.env["ACT"] && !process.env["TRUE_SITE_SIZE_ALLOW_DESTRUCTIVE"]) {
-    return "running locally under act, where the workspace can be your own working directory (`act --bind`) - measuring a base would run clean-command in it and add a git worktree inside it. Set TRUE_SITE_SIZE_ALLOW_DESTRUCTIVE=1 to compare anyway, on a checkout you are happy to lose";
+    return "running locally under act, where the workspace can be your own working directory (`act --bind`) - measuring a base would run clean-command in it and register a git worktree in its repository. Set TRUE_SITE_SIZE_ALLOW_DESTRUCTIVE=1 to compare anyway, on a checkout you are happy to lose";
   }
   if (!gitIsUsable(workspace)) {
     return "the workspace is not a usable git repository (a git worktree checkout, whose .git file points at a gitdir that is not here?)";
@@ -33191,6 +33205,7 @@ var main = async () => {
     })
   ).digest("hex").slice(0, 16);
   const cacheDir = process.env["TRUE_SITE_SIZE_CACHE_DIR"] ?? (process.env["GITHUB_ACTIONS"] ? join3(homedir(), ".true-site-size-cache") : null);
+  const baseDir = join3(process.env["RUNNER_TEMP"] ?? tmpdir2(), "true-site-size-base");
   let cleaned = false;
   const cleanOnce = () => {
     if (config.cleanCommand && !cleaned) {
@@ -33210,7 +33225,7 @@ var main = async () => {
       new RegExp(config.releaseTagPattern)
     );
     const recorded = new Set(
-      readHistory(workspace, config.historyBranch, historyFile).filter((e) => e.configHash === configHash).map((e) => e.sha)
+      readHistory(workspace, config.historyBranch, historyFile).filter((e) => e.configHash === configHash && !e.error).map((e) => e.sha)
     );
     const todo = commits.filter((sha) => !recorded.has(sha));
     console.log(
@@ -33230,11 +33245,10 @@ var main = async () => {
         `[true-site-size] backfill ${i + 1}/${todo.length}: measuring ${sha.slice(0, 9)}...`
       );
       cleanOnce();
-      const dir = join3(workspace, ".true-site-size-base");
       let entry;
       try {
-        addBaseWorktree(workspace, dir, sha);
-        const built = await buildAndMeasure(dir, config);
+        addBaseWorktree(workspace, baseDir, sha);
+        const built = await buildAndMeasure(baseDir, config);
         logBreakdown(`backfill ${sha.slice(0, 9)}`, built.results);
         entry = historyEntry(workspace, sha, configHash, built);
       } catch (e) {
@@ -33245,7 +33259,7 @@ var main = async () => {
           error: e.message
         });
       } finally {
-        removeBaseWorktree(workspace, dir);
+        removeBaseWorktree(workspace, baseDir);
       }
       appendHistory(workspace, config.historyBranch, historyFile, [entry]);
       slowestMs = Math.max(slowestMs, Date.now() - commitStarted);
@@ -33302,7 +33316,6 @@ var main = async () => {
     }
     console.log(`[true-site-size] measuring base (${ref})...`);
     cleanOnce();
-    const baseDir = join3(workspace, ".true-site-size-base");
     try {
       addBaseWorktree(workspace, baseDir, "FETCH_HEAD");
       const built = await buildAndMeasure(baseDir, config);
@@ -33357,7 +33370,9 @@ var main = async () => {
         releases: config.historyReleases,
         charted: {
           visits: new Set(head.filter((r) => r.visitChart).map((r) => r.visit ?? 0)),
-          rows: new Set(head.filter((r) => r.chart).map((r) => r.name))
+          rows: new Map(
+            head.flatMap((r) => r.chart ? [[r.name, r.chart]] : [])
+          )
         }
       });
     } catch (e) {
