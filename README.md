@@ -140,7 +140,8 @@ the newest point, and a collapsed table linking each commit and its PR.
 - **What's plotted:** sizes in kB, one chart each, for whatever the journey
   flags with `"chart": true` - on a `startAgain` step it charts that visit's
   total, on a `row` step that row (eg `{ "startAgain": "game", "chart": true
-  }`). With nothing flagged, every visit total is charted. Each chart's axis is
+  }`), and `"chart": "cumulative"` on a row step charts its visit's running
+  total up to and including it - the table's Σ. With nothing flagged, every visit total is charted. Each chart's axis is
   fitted to its own range rather than pinned at zero, so small moves stay
   visible, and its title gives the latest size and its change across the
   window. Tagged commits are labelled 🏷️ on the axis and line. Mermaid charts
