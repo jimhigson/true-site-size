@@ -127,9 +127,11 @@ inputs:
     default: ""
   collapse-breakdown:
     description: >
-      collapse each ref's per-file breakdown into an expandable <details>
-      (true) or show it inline (false). Rows with no changes are always a
-      plain line, since there is nothing to reveal by expanding.
+      fold the detail away (true) or show it inline (false): the per-file
+      breakdowns become one expandable line, opening onto a line per ref and
+      then per row, and the disk section collapses to a line with its total.
+      Rows with no changes are always a plain line, since there is nothing to
+      reveal by expanding.
     default: "true"
   measure-disk:
     description: >

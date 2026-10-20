@@ -28,6 +28,15 @@ const baseHeader = (b: BaseRef) => {
 };
 
 /**
+ * baseHeader as html, for a <summary> - github renders no markdown in one
+ */
+const baseSummary = (b: BaseRef) => {
+  const name = b.url ? `<a href="${b.url}">${b.ref}</a>` : `<code>${b.ref}</code>`;
+  const desc = b.describe && b.describe !== b.ref ? ` · ${b.describe}` : "";
+  return `vs ${name}${desc}`;
+};
+
+/**
  * a colour per mark (journey row), shown as a circle next to its name wherever
  * it's referenced so a row is easy to follow across the table and breakdowns.
  * Assigned by row order; cycles once the palette is exhausted.
@@ -208,9 +217,11 @@ export const formatComment = (
           : `${summary}\n\n${table}`;
       })
       .filter(Boolean);
-    return entries.length ?
-        `\n#### ${baseHeader(b)}\n\n${entries.join("\n\n")}\n`
-      : "";
+    if (!entries.length) return "";
+    // collapsed, each ref is itself a disclosure nesting its rows' tables
+    return collapsibleBreakdown ?
+        `<details><summary>${baseSummary(b)}</summary>\n\n${entries.join("\n\n")}\n\n</details>\n`
+      : `\n#### ${baseHeader(b)}\n\n${entries.join("\n\n")}\n`;
   };
 
   // table: row label, the PR value, then one delta column per base ref. Each
@@ -347,8 +358,13 @@ export const formatComment = (
     : "<sub>no base ref to compare against - showing head only</sub>";
   const comparedNote = bases.length === 0 ? `\n${noBaseNote}` : "";
 
-  // per-file breakdown grouped under a heading per base ref
-  const detailsBlocks = bases.map(breakdownFor).join("");
+  // per-file breakdown grouped under a heading per base ref - or, collapsed,
+  // folded into one line that opens onto a line per ref
+  const breakdowns = bases.map(breakdownFor).join("");
+  const detailsBlocks =
+    collapsibleBreakdown && breakdowns ?
+      `\n<details><summary>🔍 changed files, per ref and row</summary>\n\n${breakdowns}\n</details>\n`
+    : breakdowns;
 
   // ── total built size on disk: every file in serve-dir, loaded or not,
   // compressed as served. headDisk / base.disk are { total, files } or null.
@@ -368,15 +384,16 @@ export const formatComment = (
       diskFilesOf(headDisk),
       diskFilesOf(b.disk),
     );
-    const heading = `\n#### ${baseHeader(b)}\n\n`;
     if (changed.length === 0) {
-      return `${heading}no per-file changes (${fileCount} files identical)\n`;
+      return collapsibleBreakdown ?
+          `\n${baseHeader(b)}: no per-file changes (${fileCount} files identical)\n`
+        : `\n#### ${baseHeader(b)}\n\nno per-file changes (${fileCount} files identical)\n`;
     }
     const summary = `${changed.length} file(s) changed, ${fileCount - changed.length} identical`;
     const table = fileTable(b, changed);
     return collapsibleBreakdown ?
-        `${heading}<details><summary>${summary}</summary>\n\n${table}\n</details>\n`
-      : `${heading}${summary}\n\n${table}\n`;
+        `\n<details><summary>${baseSummary(b)}: ${summary}</summary>\n\n${table}\n</details>\n`
+      : `\n#### ${baseHeader(b)}\n\n${summary}\n\n${table}\n`;
   };
   const diskHeader = ["", "PR", ...bases.map(baseHeader)];
   const diskTotalRow =
@@ -389,17 +406,28 @@ export const formatComment = (
         ),
       ].join(" | ")} |`
     : "";
-  const diskSection =
-    measureDisk && headDisk ?
-      `\n### 💾 total built size on disk${commentKey ? ` (${commentKey})` : ""}
-
-Every file in the built site, loaded or not, compressed as served.
+  const diskBody = `Every file in the built site, loaded or not, compressed as served.
 
 | ${diskHeader.join(" | ")} |
 | ${diskHeader.map(() => "---").join(" | ")} |
 ${diskTotalRow}
-${bases.length === 0 ? `${noBaseNote}\n` : ""}${bases.map(diskBreakdownFor).join("")}`
-    : "";
+${bases.length === 0 ? `${noBaseNote}\n` : ""}${bases.map(diskBreakdownFor).join("")}`;
+  /** the collapsed section's one line: the total, and its change vs the
+   *  first measured base */
+  const diskSummary = () => {
+    const vs = bases.find((b) => b.disk);
+    const d = vs?.disk ? headDisk!.total - vs.disk.total : null;
+    const change =
+      d === null ? ""
+      : Math.abs(d) < minimumChangeThreshold ? ` (unchanged ${baseSummary(vs!)})`
+      : ` (${d > 0 ? "+" : "-"}${formatBytes(Math.abs(d))} ${baseSummary(vs!)})`;
+    return `<b>💾 total built size on disk${commentKey ? ` (${commentKey})` : ""}</b>: ${formatBytes(headDisk!.total)}${change}`;
+  };
+  const diskSection =
+    !(measureDisk && headDisk) ? ""
+    : collapsibleBreakdown ?
+      `\n<details><summary>${diskSummary()}</summary>\n\n${diskBody}\n</details>\n`
+    : `\n### 💾 total built size on disk${commentKey ? ` (${commentKey})` : ""}\n\n${diskBody}`;
 
   return `${markerFor(commentKey)}
 ### 📡 real network cost to ready${commentKey ? ` (${commentKey})` : ""}

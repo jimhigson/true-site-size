@@ -31624,6 +31624,11 @@ var baseHeader = (b) => {
   const desc = b.describe && b.describe !== b.ref ? ` \xB7 ${b.describe}` : "";
   return `vs ${name}${desc}`;
 };
+var baseSummary = (b) => {
+  const name = b.url ? `<a href="${b.url}">${b.ref}</a>` : `<code>${b.ref}</code>`;
+  const desc = b.describe && b.describe !== b.ref ? ` \xB7 ${b.describe}` : "";
+  return `vs ${name}${desc}`;
+};
 var markColours = ["\u{1F7E3}", "\u{1F7E0}", "\u{1F535}", "\u{1F7E1}", "\u{1F7E2}", "\u{1F534}", "\u{1F7E4}", "\u26AB", "\u26AA"];
 var markColour = (i) => markColours[i % markColours.length];
 var markBadge = (row, i) => row.emoji ?? markColour(i);
@@ -31735,11 +31740,17 @@ ${table}
 
 ${table}`;
     }).filter(Boolean);
-    return entries.length ? `
+    if (!entries.length) return "";
+    return collapsibleBreakdown ? `<details><summary>${baseSummary(b)}</summary>
+
+${entries.join("\n\n")}
+
+</details>
+` : `
 #### ${baseHeader(b)}
 
 ${entries.join("\n\n")}
-` : "";
+`;
   };
   const headerCells = ["", "PR", ...bases.map(baseHeader)];
   const sepCells = headerCells.map(() => "---");
@@ -31813,7 +31824,13 @@ ${entries.join("\n\n")}
   const noBaseNote = baseSkippedReason ? `<sub>showing head only - base comparison skipped: ${baseSkippedReason}</sub>` : "<sub>no base ref to compare against - showing head only</sub>";
   const comparedNote = bases.length === 0 ? `
 ${noBaseNote}` : "";
-  const detailsBlocks = bases.map(breakdownFor).join("");
+  const breakdowns = bases.map(breakdownFor).join("");
+  const detailsBlocks = collapsibleBreakdown && breakdowns ? `
+<details><summary>\u{1F50D} changed files, per ref and row</summary>
+
+${breakdowns}
+</details>
+` : breakdowns;
   const diskFilesOf = (disk) => {
     const m = /* @__PURE__ */ new Map();
     for (const [path, bytes] of Object.entries(disk?.files ?? {})) {
@@ -31828,21 +31845,26 @@ ${noBaseNote}` : "";
       diskFilesOf(headDisk),
       diskFilesOf(b.disk)
     );
-    const heading = `
+    if (changed.length === 0) {
+      return collapsibleBreakdown ? `
+${baseHeader(b)}: no per-file changes (${fileCount} files identical)
+` : `
 #### ${baseHeader(b)}
 
-`;
-    if (changed.length === 0) {
-      return `${heading}no per-file changes (${fileCount} files identical)
+no per-file changes (${fileCount} files identical)
 `;
     }
     const summary = `${changed.length} file(s) changed, ${fileCount - changed.length} identical`;
     const table = fileTable(b, changed);
-    return collapsibleBreakdown ? `${heading}<details><summary>${summary}</summary>
+    return collapsibleBreakdown ? `
+<details><summary>${baseSummary(b)}: ${summary}</summary>
 
 ${table}
 </details>
-` : `${heading}${summary}
+` : `
+#### ${baseHeader(b)}
+
+${summary}
 
 ${table}
 `;
@@ -31855,16 +31877,28 @@ ${table}
       (b) => b.disk ? deltaCell(headDisk.total, b.disk.total) : "\u2014"
     )
   ].join(" | ")} |` : "";
-  const diskSection = measureDisk && headDisk ? `
-### \u{1F4BE} total built size on disk${commentKey ? ` (${commentKey})` : ""}
-
-Every file in the built site, loaded or not, compressed as served.
+  const diskBody = `Every file in the built site, loaded or not, compressed as served.
 
 | ${diskHeader.join(" | ")} |
 | ${diskHeader.map(() => "---").join(" | ")} |
 ${diskTotalRow}
 ${bases.length === 0 ? `${noBaseNote}
-` : ""}${bases.map(diskBreakdownFor).join("")}` : "";
+` : ""}${bases.map(diskBreakdownFor).join("")}`;
+  const diskSummary = () => {
+    const vs = bases.find((b) => b.disk);
+    const d = vs?.disk ? headDisk.total - vs.disk.total : null;
+    const change = d === null ? "" : Math.abs(d) < minimumChangeThreshold ? ` (unchanged ${baseSummary(vs)})` : ` (${d > 0 ? "+" : "-"}${formatBytes(Math.abs(d))} ${baseSummary(vs)})`;
+    return `<b>\u{1F4BE} total built size on disk${commentKey ? ` (${commentKey})` : ""}</b>: ${formatBytes(headDisk.total)}${change}`;
+  };
+  const diskSection = !(measureDisk && headDisk) ? "" : collapsibleBreakdown ? `
+<details><summary>${diskSummary()}</summary>
+
+${diskBody}
+</details>
+` : `
+### \u{1F4BE} total built size on disk${commentKey ? ` (${commentKey})` : ""}
+
+${diskBody}`;
   return `${markerFor(commentKey)}
 ### \u{1F4E1} real network cost to ready${commentKey ? ` (${commentKey})` : ""}
 

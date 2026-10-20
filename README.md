@@ -382,7 +382,7 @@ Only fully-successful base measurements are cached.
 | `strip-hash` | vite-style | regex stripped from filenames for per-file matching; `""` disables |
 | `comment` | `true` | post/update the PR comment |
 | `pr-number` | event PR | PR number to comment on; set it to comment from a non-PR event (eg a push to main updating an open release PR) |
-| `collapse-breakdown` | `true` | collapse each ref's changed-file breakdown into an expandable `<details>`; `false` shows it inline |
+| `collapse-breakdown` | `true` | fold the per-file breakdowns into one expandable line (nesting a line per ref, then per row) and the disk section into a line with its total; `false` shows them inline |
 | `measure-disk` | `true` | also report total built size on disk (compressed as served, every file in serve-dir); `false` skips the cost on large sites |
 | `comment-key` | `""` | maintain separate comments per key |
 | `history-branch` | `""` | orphan branch recording each default-branch commit's sizes, charted in the comment; empty disables |
