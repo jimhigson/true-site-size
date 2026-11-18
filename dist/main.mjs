@@ -33414,7 +33414,7 @@ var main = async () => {
     console.log(`[true-site-size] measuring base (${ref})...`);
     cleanOnce();
     try {
-      addBaseWorktree(workspace, baseDir, "FETCH_HEAD");
+      addBaseWorktree(workspace, baseDir, base.sha);
       const built = await buildAndMeasure(baseDir, config);
       base.results = built.results;
       base.disk = built.disk;
