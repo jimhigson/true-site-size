@@ -135,8 +135,17 @@ the newest point, and a collapsed table linking each commit and its PR.
 
 - **Where it's stored:** an orphan branch of your repo (created on the first
   write), one json file per `comment-key`. A push to the default branch appends
-  its head's sizes; PR runs only read it, so PRs from forks still see the chart.
-  The workflow needs `contents: write` for the push runs to record.
+  its head's sizes; PR runs read it, so PRs from forks still see the chart.
+  The workflow needs `contents: write` for runs to record.
+- **Bases are reused, not rebuilt:** each commit's full measurement (every
+  row's request log and the disk file list) is stored on the branch too, under
+  `results/`, keyed by the commit and a hash of everything that decides the
+  bytes - the measured config, Chrome's major version and the measuring code.
+  A base ref with an exact hit is read back instead of built and measured: on a
+  typical PR the default branch's tip and release tags already are, so only the
+  PR's head is built. The comment notes each reused base with when it was
+  measured (`♻️ v1.4.0 measurements based on data previously gathered at …`).
+  A miss builds the base as before and stores it for next time.
 - **What's plotted:** sizes in kB, one chart each, for whatever the journey
   flags with `"chart": true` - on a `startAgain` step it charts that visit's
   total, on a `row` step that row (eg `{ "startAgain": "game", "chart": true
@@ -354,7 +363,10 @@ Build output from `install-command`/`build-command` streams to the same log.
 Base-ref measurements are cached by (base sha, measurement config) via
 `actions/cache`, so repeat pushes to a pull request skip rebuilding and
 re-measuring the unchanged base — the log says `base ... loaded from cache`.
-Only fully-successful base measurements are cached.
+With `history-branch` set they're also stored durably on that branch (see
+History), which takes precedence - the log says `loaded from <branch>`. Either
+way the comment notes the reuse and when the base was measured. Only
+fully-successful base measurements are cached or stored.
 
 ## Inputs
 

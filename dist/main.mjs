@@ -31600,7 +31600,7 @@ var require_chrome_remote_interface = __commonJS({
 // src/main.ts
 import { createHash as createHash2 } from "node:crypto";
 import { execSync as execSync3 } from "node:child_process";
-import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync2, writeFileSync } from "node:fs";
+import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync2, statSync as statSync2, writeFileSync } from "node:fs";
 import { homedir, tmpdir as tmpdir2 } from "node:os";
 import { join as join3, resolve } from "node:path";
 
@@ -31824,6 +31824,11 @@ ${entries.join("\n\n")}
   const noBaseNote = baseSkippedReason ? `<sub>showing head only - base comparison skipped: ${baseSkippedReason}</sub>` : "<sub>no base ref to compare against - showing head only</sub>";
   const comparedNote = bases.length === 0 ? `
 ${noBaseNote}` : "";
+  const reused = bases.filter((b) => b.measuredAt);
+  const reusedNote = reused.length ? `
+<sub>\u267B\uFE0F ${reused.map(
+    (b) => `${b.url ? `[${b.ref}](${b.url})` : `\`${b.ref}\``} measurements based on data previously gathered at ${b.measuredAt.slice(0, 16).replace("T", " ")} UTC`
+  ).join("; ")} - same commit and measurement setup, so not rebuilt</sub>` : "";
   const breakdowns = bases.map(breakdownFor).join("");
   const detailsBlocks = collapsibleBreakdown && breakdowns ? `
 <details><summary>\u{1F50D} changed files, per ref and row</summary>
@@ -31907,7 +31912,7 @@ True wire bytes from cold cache to \`performance.mark\`, network settled.
 | ${headerCells.join(" | ")} |
 | ${sepCells.join(" | ")} |
 ${rows.join("\n")}
-${spreadNote}${ignoredNote}${baseErrorNotes}${duplicateNotes}${comparedNote}
+${spreadNote}${ignoredNote}${baseErrorNotes}${duplicateNotes}${comparedNote}${reusedNote}
 ${detailsBlocks}
 ${diskSection}${historySection}
 ${runUrl ? `
@@ -31992,6 +31997,18 @@ var entriesAt = (workspace, tip, file) => {
   }
 };
 var readHistory = (workspace, branch, file) => entriesAt(workspace, fetchHistoryTip(workspace, branch), file);
+var resultFileFor = (sha, storeKey) => `${sha}-${storeKey}.json`;
+var readStoredResult = (workspace, branch, sha, storeKey) => {
+  const tip = fetchHistoryTip(workspace, branch);
+  if (!tip) return null;
+  try {
+    return JSON.parse(
+      gitOut(`git show ${tip}:results/${resultFileFor(sha, storeKey)}`, workspace)
+    );
+  } catch {
+    return null;
+  }
+};
 var mergeEntries = (existing, added) => {
   const keyOf = (e) => `${e.sha}:${e.configHash}`;
   const byKey = new Map(existing.map((e) => [keyOf(e), e]));
@@ -32008,19 +32025,34 @@ var botIdentity = {
   GIT_COMMITTER_NAME: "github-actions[bot]",
   GIT_COMMITTER_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
 };
-var appendHistory = (workspace, branch, file, added) => {
+var appendHistory = (workspace, branch, file, added, results = {}) => {
   const attempts = 5;
   for (let attempt = 1; ; attempt++) {
     const tip = fetchHistoryTip(workspace, branch);
     const entries = mergeEntries(entriesAt(workspace, tip, file), added);
     const blob = gitOut("git hash-object -w --stdin", workspace, serialise(entries));
-    const others = tip ? gitOut(`git ls-tree ${tip}`, workspace).split("\n").filter((line) => line && !line.endsWith(`	${file}`)) : [];
+    const root = tip ? gitOut(`git ls-tree ${tip}`, workspace).split("\n").filter(Boolean) : [];
+    const others = root.filter(
+      (line) => !line.endsWith(`	${file}`) && !line.endsWith("	results")
+    );
+    const names = Object.keys(results);
+    const storedResults = root.some((line) => line.endsWith("	results")) ? gitOut(`git ls-tree ${tip}:results`, workspace).split("\n").filter((line) => line && !names.some((n) => line.endsWith(`	${n}`))) : [];
+    const resultsLines = [
+      ...storedResults,
+      ...names.map(
+        (n) => `100644 blob ${gitOut("git hash-object -w --stdin", workspace, JSON.stringify(results[n]))}	${n}`
+      )
+    ];
+    const resultsTree = resultsLines.length ? [`040000 tree ${gitOut("git mktree", workspace, resultsLines.join("\n") + "\n")}	results`] : [];
     const tree = gitOut(
       "git mktree",
       workspace,
-      [...others, `100644 blob ${blob}	${file}`].join("\n") + "\n"
+      [...others, ...resultsTree, `100644 blob ${blob}	${file}`].join("\n") + "\n"
     );
-    const message = `record ${added.map((e) => e.sha.slice(0, 9)).join(", ")} in ${file}`;
+    const message = [
+      added.length ? `record ${added.map((e) => e.sha.slice(0, 9)).join(", ")} in ${file}` : "",
+      names.length ? `store results for ${names.map((n) => n.slice(0, 9)).join(", ")}` : ""
+    ].filter(Boolean).join("; ");
     const commit = execSync2(
       `git commit-tree ${tree}${tip ? ` -p ${tip}` : ""} -m "${message}"`,
       { cwd: workspace, stdio: "pipe", env: { ...process.env, ...botIdentity } }
@@ -32324,7 +32356,7 @@ ${tableRows.join("\n")}
 
 // src/measure.ts
 var import_chrome_remote_interface = __toESM(require_chrome_remote_interface(), 1);
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 
 // src/serve.ts
 import { createHash, createPublicKey } from "node:crypto";
@@ -32529,6 +32561,7 @@ var findChrome = () => {
   }
   return found;
 };
+var chromeMajorVersion = () => /(\d+)\./.exec(execFileSync(findChrome(), ["--version"]).toString())?.[1] ?? "unknown";
 var launchChrome = async () => {
   const userDataDir = mkdtempSync(join2(tmpdir(), "true-site-size-"));
   const child = spawn(
@@ -33094,6 +33127,7 @@ var removeBaseWorktree = (workspace, dir) => {
 };
 
 // src/main.ts
+var measureVersion = false ? "source" : "25fda3211d2c";
 var input = (name, fallback, { allowEmpty = false } = {}) => {
   const v = process.env[`INPUT_${name.toUpperCase().replaceAll("-", "_")}`];
   if (v === void 0) return fallback;
@@ -33238,6 +33272,16 @@ var main = async () => {
       measureDisk: config.measureDisk
     })
   ).digest("hex").slice(0, 16);
+  const storeKey = createHash2("sha256").update(JSON.stringify({ configHash, chrome: chromeMajorVersion(), measureVersion })).digest("hex").slice(0, 16);
+  const storeResults = (added, results) => {
+    try {
+      appendHistory(workspace, config.historyBranch, historyFile, added, results);
+    } catch (e) {
+      console.warn(
+        `[true-site-size] could not store results on ${config.historyBranch}: ${e.message}`
+      );
+    }
+  };
   const cacheDir = process.env["TRUE_SITE_SIZE_CACHE_DIR"] ?? (process.env["GITHUB_ACTIONS"] ? join3(homedir(), ".true-site-size-cache") : null);
   const baseDir = join3(process.env["RUNNER_TEMP"] ?? tmpdir2(), "true-site-size-base");
   let cleaned = false;
@@ -33280,11 +33324,18 @@ var main = async () => {
       );
       cleanOnce();
       let entry;
+      const results = {};
       try {
         addBaseWorktree(workspace, baseDir, sha);
         const built = await buildAndMeasure(baseDir, config);
         logBreakdown(`backfill ${sha.slice(0, 9)}`, built.results);
         entry = historyEntry(workspace, sha, configHash, built);
+        if (built.results.every((r) => !r.error)) {
+          results[resultFileFor(sha, storeKey)] = {
+            ...built,
+            measuredAt: (/* @__PURE__ */ new Date()).toISOString()
+          };
+        }
       } catch (e) {
         console.warn(
           `[true-site-size] backfill: ${sha.slice(0, 9)} could not be measured (recorded as an error): ${e.message}`
@@ -33295,7 +33346,7 @@ var main = async () => {
       } finally {
         removeBaseWorktree(workspace, baseDir);
       }
-      appendHistory(workspace, config.historyBranch, historyFile, [entry]);
+      appendHistory(workspace, config.historyBranch, historyFile, [entry], results);
       slowestMs = Math.max(slowestMs, Date.now() - commitStarted);
     }
   };
@@ -33337,11 +33388,23 @@ var main = async () => {
     } catch {
     }
     base.url = serverUrl && repo ? `${serverUrl}/${repo}/commit/${base.sha}` : null;
+    const stored = config.historyBranch ? readStoredResult(workspace, config.historyBranch, base.sha, storeKey) : null;
+    if (stored) {
+      base.results = stored.results;
+      base.disk = stored.disk;
+      if (stored.measuredAt) base.measuredAt = stored.measuredAt;
+      console.log(
+        `[true-site-size] base (${ref} @ ${base.sha.slice(0, 9)}) loaded from ${config.historyBranch}, measured ${stored.measuredAt ?? "earlier"} - skipping its build and measurement`
+      );
+      logBreakdown(`base ${ref} (stored)`, base.results);
+      return base;
+    }
     const cacheFile = cacheDir ? join3(cacheDir, `base-${base.sha}-${configHash}.json`) : null;
     const cached = cacheFile && existsSync3(cacheFile) ? JSON.parse(readFileSync2(cacheFile, "utf8")) : null;
     if (cached && !Array.isArray(cached)) {
       base.results = cached.results;
       base.disk = cached.disk ?? null;
+      base.measuredAt = statSync2(cacheFile).mtime.toISOString();
       console.log(
         `[true-site-size] base (${ref} @ ${base.sha.slice(0, 9)}) loaded from cache - skipping its build and measurement`
       );
@@ -33363,6 +33426,14 @@ var main = async () => {
           JSON.stringify({ results: base.results, disk: base.disk })
         );
         console.log("[true-site-size] base result cached for future runs");
+      }
+      if (config.historyBranch && base.results.every((r) => !r.error)) {
+        storeResults([], {
+          [resultFileFor(base.sha, storeKey)]: {
+            ...built,
+            measuredAt: (/* @__PURE__ */ new Date()).toISOString()
+          }
+        });
       }
     } catch (e) {
       console.warn(
@@ -33388,7 +33459,19 @@ var main = async () => {
       const headEntry = sha ? historyEntry(workspace, sha, configHash, { results: head, disk: headDisk }) : null;
       let entries = readHistory(workspace, config.historyBranch, historyFile);
       if (isDefaultPush && headEntry) {
-        appendHistory(workspace, config.historyBranch, historyFile, [headEntry]);
+        appendHistory(
+          workspace,
+          config.historyBranch,
+          historyFile,
+          [headEntry],
+          head.every((r) => !r.error) ? {
+            [resultFileFor(headEntry.sha, storeKey)]: {
+              results: head,
+              disk: headDisk,
+              measuredAt: (/* @__PURE__ */ new Date()).toISOString()
+            }
+          } : {}
+        );
         entries = mergeEntries(entries, [headEntry]);
       }
       historySection = formatHistory(entries, isDefaultPush ? null : headEntry, {

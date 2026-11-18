@@ -166,8 +166,11 @@ inputs:
     description: >
       orphan branch (created on first write) that records each commit's sizes,
       charted in the comment as a timeline. A push to the default branch
-      appends its head (the workflow needs contents: write); PR runs only read
-      it, and chart their head as the newest point. Empty disables history.
+      appends its head (the workflow needs contents: write); PR runs chart
+      their head as the newest point. Each commit's full measurement is stored
+      there too, keyed by commit, config, Chrome major version and measuring
+      code - a base ref with an exact hit is reused instead of rebuilt, and the
+      comment says when it was measured. Empty disables history.
     default: ""
   history-length:
     description: how many recorded commits the history chart shows

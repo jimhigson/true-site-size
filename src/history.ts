@@ -3,6 +3,7 @@ import { execSync } from "node:child_process";
 import { run, runQuiet } from "./run.ts";
 
 import type {
+  BuiltResult,
   DiskSizes,
   HistoryEntry,
   HistoryRow,
@@ -66,6 +67,35 @@ export const readHistory = (workspace: string, branch: string, file: string) =>
   entriesAt(workspace, fetchHistoryTip(workspace, branch), file);
 
 /**
+ * A commit's full measurement - every row's request log and the disk file
+ * list, what the comment's per-file breakdowns need - is stored on the
+ * branch too, as results/<sha>-<storeKey>.json. The store key hashes all
+ * that decides the bytes (the measured config, the chrome major version and
+ * the measuring code), so a hit is a measurement this run would repeat
+ * exactly, and a base found there needn't be built
+ */
+export const resultFileFor = (sha: string, storeKey: string) =>
+  `${sha}-${storeKey}.json`;
+
+/** a stored full measurement, or null when there's no exact hit */
+export const readStoredResult = (
+  workspace: string,
+  branch: string,
+  sha: string,
+  storeKey: string,
+): BuiltResult | null => {
+  const tip = fetchHistoryTip(workspace, branch);
+  if (!tip) return null;
+  try {
+    return JSON.parse(
+      gitOut(`git show ${tip}:results/${resultFileFor(sha, storeKey)}`, workspace),
+    ) as BuiltResult;
+  } catch {
+    return null;
+  }
+};
+
+/**
  * fold new entries into recorded ones: a commit re-measured under the same
  * config replaces its old entry, and the whole sorts oldest first
  */
@@ -91,34 +121,59 @@ const botIdentity = {
 };
 
 /**
- * append entries to the history branch and push. Concurrent writers (a
- * backfill racing a push to main) lose the race with a non-fast-forward
- * rejection, so each attempt re-reads the tip and re-applies its entries
+ * append entries, and store full results (results/ file name -> json), on
+ * the history branch and push. Concurrent writers (a backfill racing a push
+ * to main) lose the race with a non-fast-forward rejection, so each attempt
+ * re-reads the tip and re-applies its additions
  */
 export const appendHistory = (
   workspace: string,
   branch: string,
   file: string,
   added: HistoryEntry[],
+  results: Record<string, BuiltResult> = {},
 ) => {
   const attempts = 5;
   for (let attempt = 1; ; attempt++) {
     const tip = fetchHistoryTip(workspace, branch);
     const entries = mergeEntries(entriesAt(workspace, tip, file), added);
     const blob = gitOut("git hash-object -w --stdin", workspace, serialise(entries));
+    const root =
+      tip ? gitOut(`git ls-tree ${tip}`, workspace).split("\n").filter(Boolean) : [];
     // keep the other comment-keys' files alongside this one
-    const others =
-      tip ?
-        gitOut(`git ls-tree ${tip}`, workspace)
+    const others = root.filter(
+      (line) => !line.endsWith(`\t${file}`) && !line.endsWith("\tresults"),
+    );
+    // results/ keeps every stored file, adding (or replacing) this write's
+    const names = Object.keys(results);
+    const storedResults =
+      root.some((line) => line.endsWith("\tresults")) ?
+        gitOut(`git ls-tree ${tip}:results`, workspace)
           .split("\n")
-          .filter((line) => line && !line.endsWith(`\t${file}`))
+          .filter((line) => line && !names.some((n) => line.endsWith(`\t${n}`)))
+      : [];
+    const resultsLines = [
+      ...storedResults,
+      ...names.map(
+        (n) =>
+          `100644 blob ${gitOut("git hash-object -w --stdin", workspace, JSON.stringify(results[n]))}\t${n}`,
+      ),
+    ];
+    const resultsTree =
+      resultsLines.length ?
+        [`040000 tree ${gitOut("git mktree", workspace, resultsLines.join("\n") + "\n")}\tresults`]
       : [];
     const tree = gitOut(
       "git mktree",
       workspace,
-      [...others, `100644 blob ${blob}\t${file}`].join("\n") + "\n",
+      [...others, ...resultsTree, `100644 blob ${blob}\t${file}`].join("\n") + "\n",
     );
-    const message = `record ${added.map((e) => e.sha.slice(0, 9)).join(", ")} in ${file}`;
+    const message = [
+      added.length ? `record ${added.map((e) => e.sha.slice(0, 9)).join(", ")} in ${file}` : "",
+      names.length ? `store results for ${names.map((n) => n.slice(0, 9)).join(", ")}` : "",
+    ]
+      .filter(Boolean)
+      .join("; ");
     const commit = execSync(
       `git commit-tree ${tree}${tip ? ` -p ${tip}` : ""} -m "${message}"`,
       { cwd: workspace, stdio: "pipe", env: { ...process.env, ...botIdentity } },

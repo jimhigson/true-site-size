@@ -119,6 +119,8 @@ export interface DiskSizes {
 export interface BuiltResult {
   results: RowResult[];
   disk: DiskSizes | null;
+  /** when it was measured (ISO 8601), on a result stored for reuse */
+  measuredAt?: string;
 }
 
 /** a measured base ref column (never throws; errors mark just this column) */
@@ -137,6 +139,9 @@ export interface BaseRef {
   results?: RowResult[] | null;
   /** the base's whole-site disk size, or null */
   disk?: DiskSizes | null;
+  /** set when the measurement was reused from an earlier run rather than
+   *  made by this one: when that run measured it (ISO 8601) */
+  measuredAt?: string;
 }
 
 /** a parsed compression level: a number, the literal "max", or null (default) */

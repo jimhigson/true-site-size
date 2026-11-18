@@ -358,6 +358,19 @@ export const formatComment = (
     : "<sub>no base ref to compare against - showing head only</sub>";
   const comparedNote = bases.length === 0 ? `\n${noBaseNote}` : "";
 
+  // a base reused from an earlier run says so, and when it was measured -
+  // the same commit measured the same way, but not by this run
+  const reused = bases.filter((b) => b.measuredAt);
+  const reusedNote =
+    reused.length ?
+      `\n<sub>♻️ ${reused
+        .map(
+          (b) =>
+            `${b.url ? `[${b.ref}](${b.url})` : `\`${b.ref}\``} measurements based on data previously gathered at ${b.measuredAt!.slice(0, 16).replace("T", " ")} UTC`,
+        )
+        .join("; ")} - same commit and measurement setup, so not rebuilt</sub>`
+    : "";
+
   // per-file breakdown grouped under a heading per base ref - or, collapsed,
   // folded into one line that opens onto a line per ref
   const breakdowns = bases.map(breakdownFor).join("");
@@ -437,7 +450,7 @@ True wire bytes from cold cache to \`performance.mark\`, network settled.
 | ${headerCells.join(" | ")} |
 | ${sepCells.join(" | ")} |
 ${rows.join("\n")}
-${spreadNote}${ignoredNote}${baseErrorNotes}${duplicateNotes}${comparedNote}
+${spreadNote}${ignoredNote}${baseErrorNotes}${duplicateNotes}${comparedNote}${reusedNote}
 ${detailsBlocks}
 ${diskSection}${historySection}
 ${runUrl ? `\n<sub>📋 per-request breakdown (every url, size and timing) is in the [run logs](${runUrl})</sub>` : ""}

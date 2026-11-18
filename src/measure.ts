@@ -1,5 +1,5 @@
 import CDP from "chrome-remote-interface";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 
 import { formatDuration } from "./formatBytes.ts";
 import { certSpkiHash } from "./serve.ts";
@@ -53,6 +53,14 @@ export const findChrome = () => {
   }
   return found;
 };
+
+/**
+ * the browser's major version - part of a stored result's key, since what
+ * chrome fetches (preloads, priorities) can change with the version
+ */
+export const chromeMajorVersion = () =>
+  /(\d+)\./.exec(execFileSync(findChrome(), ["--version"]).toString())?.[1] ??
+  "unknown";
 
 const launchChrome = async () => {
   const userDataDir = mkdtempSync(join(tmpdir(), "true-site-size-"));

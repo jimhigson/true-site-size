@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -9,6 +9,8 @@ import { formatBytes, formatDuration } from "./formatBytes.ts";
 import {
   appendHistory,
   backfillCommits,
+  readStoredResult,
+  resultFileFor,
   historyEntry,
   historyFileFor,
   mergeEntries,
@@ -16,7 +18,7 @@ import {
   remoteTags,
 } from "./history.ts";
 import { formatHistory } from "./historyChart.ts";
-import { measure } from "./measure.ts";
+import { chromeMajorVersion, measure } from "./measure.ts";
 import { run } from "./run.ts";
 import { assertCompressionSupported, diskSizes, serve } from "./serve.ts";
 import {
@@ -33,6 +35,16 @@ import type {
   JourneyStep,
   RowResult,
 } from "./types.ts";
+
+/**
+ * a hash of the measuring code (measure.ts and serve.ts), set by the build,
+ * so a change to how bytes are measured or served invalidates stored results
+ * while changes elsewhere - the comment, the charts - don't. Unset when run
+ * from source
+ */
+declare const MEASURE_VERSION: string | undefined;
+const measureVersion =
+  typeof MEASURE_VERSION === "undefined" ? "source" : MEASURE_VERSION;
 
 /**
  * read an action input (the INPUT_* convention used by github actions).
@@ -230,6 +242,26 @@ const main = async () => {
     )
     .digest("hex")
     .slice(0, 16);
+  // a full result stored on the history branch is reused only under this exact
+  // key: the measured config, plus what else decides the bytes
+  const storeKey = createHash("sha256")
+    .update(JSON.stringify({ configHash, chrome: chromeMajorVersion(), measureVersion }))
+    .digest("hex")
+    .slice(0, 16);
+  /** store full results on the history branch, best-effort - a run that can't
+   *  write (eg a PR from a fork) still reports */
+  const storeResults = (
+    added: HistoryEntry[],
+    results: Record<string, BuiltResult>,
+  ) => {
+    try {
+      appendHistory(workspace, config.historyBranch, historyFile, added, results);
+    } catch (e) {
+      console.warn(
+        `[true-site-size] could not store results on ${config.historyBranch}: ${(e as Error).message}`,
+      );
+    }
+  };
   const cacheDir =
     process.env["TRUE_SITE_SIZE_CACHE_DIR"] ??
     (process.env["GITHUB_ACTIONS"] ?
@@ -307,11 +339,20 @@ const main = async () => {
       );
       cleanOnce();
       let entry: HistoryEntry;
+      const results: Record<string, BuiltResult> = {};
       try {
         addBaseWorktree(workspace, baseDir, sha);
         const built = await buildAndMeasure(baseDir, config);
         logBreakdown(`backfill ${sha.slice(0, 9)}`, built.results);
         entry = historyEntry(workspace, sha, configHash, built);
+        // stored whole, so a later PR comparing against this commit needn't
+        // build it - only when fully measured, like the base cache
+        if (built.results.every((r) => !r.error)) {
+          results[resultFileFor(sha, storeKey)] = {
+            ...built,
+            measuredAt: new Date().toISOString(),
+          };
+        }
       } catch (e) {
         console.warn(
           `[true-site-size] backfill: ${sha.slice(0, 9)} could not be measured (recorded as an error): ${(e as Error).message}`,
@@ -322,7 +363,7 @@ const main = async () => {
       } finally {
         removeBaseWorktree(workspace, baseDir);
       }
-      appendHistory(workspace, config.historyBranch, historyFile, [entry]);
+      appendHistory(workspace, config.historyBranch, historyFile, [entry], results);
       slowestMs = Math.max(slowestMs, Date.now() - commitStarted);
     }
   };
@@ -389,6 +430,23 @@ const main = async () => {
     base.url =
       serverUrl && repo ? `${serverUrl}/${repo}/commit/${base.sha}` : null;
 
+    // a full measurement stored on the history branch under this exact key is
+    // what building the base now would produce, so it's reused as is
+    const stored =
+      config.historyBranch ?
+        readStoredResult(workspace, config.historyBranch, base.sha, storeKey)
+      : null;
+    if (stored) {
+      base.results = stored.results;
+      base.disk = stored.disk;
+      if (stored.measuredAt) base.measuredAt = stored.measuredAt;
+      console.log(
+        `[true-site-size] base (${ref} @ ${base.sha.slice(0, 9)}) loaded from ${config.historyBranch}, measured ${stored.measuredAt ?? "earlier"} - skipping its build and measurement`,
+      );
+      logBreakdown(`base ${ref} (stored)`, base.results);
+      return base;
+    }
+
     const cacheFile =
       cacheDir ? join(cacheDir, `base-${base.sha}-${configHash}.json`) : null;
     // the cache holds { results, disk }; a bare array is a pre-disk entry the
@@ -400,6 +458,7 @@ const main = async () => {
     if (cached && !Array.isArray(cached)) {
       base.results = cached.results;
       base.disk = cached.disk ?? null;
+      base.measuredAt = statSync(cacheFile!).mtime.toISOString();
       console.log(
         `[true-site-size] base (${ref} @ ${base.sha.slice(0, 9)}) loaded from cache - skipping its build and measurement`,
       );
@@ -424,6 +483,14 @@ const main = async () => {
           JSON.stringify({ results: base.results, disk: base.disk }),
         );
         console.log("[true-site-size] base result cached for future runs");
+      }
+      if (config.historyBranch && base.results.every((r) => !r.error)) {
+        storeResults([], {
+          [resultFileFor(base.sha, storeKey)]: {
+            ...built,
+            measuredAt: new Date().toISOString(),
+          },
+        });
       }
     } catch (e) {
       console.warn(
@@ -459,7 +526,22 @@ const main = async () => {
         : null;
       let entries = readHistory(workspace, config.historyBranch, historyFile);
       if (isDefaultPush && headEntry) {
-        appendHistory(workspace, config.historyBranch, historyFile, [headEntry]);
+        // main's head, stored whole: the base most PRs will compare against
+        appendHistory(
+          workspace,
+          config.historyBranch,
+          historyFile,
+          [headEntry],
+          head.every((r) => !r.error) ?
+            {
+              [resultFileFor(headEntry.sha, storeKey)]: {
+                results: head,
+                disk: headDisk,
+                measuredAt: new Date().toISOString(),
+              },
+            }
+          : {},
+        );
         entries = mergeEntries(entries, [headEntry]);
       }
       historySection = formatHistory(entries, isDefaultPush ? null : headEntry, {

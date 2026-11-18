@@ -6,7 +6,7 @@
   "license": "MIT",
   "author": "Claude (Anthropic AI agent), commissioned by Jim Higson",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/main.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" && mkdir -p dist/cert && cp src/cert/*.pem dist/cert/",
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/main.mjs --define:MEASURE_VERSION=\\\"$(cat src/measure.ts src/serve.ts | shasum | cut -c1-12)\\\" --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" && mkdir -p dist/cert && cp src/cert/*.pem dist/cert/",
     "typecheck": "tsc --noEmit",
     "selftest": "node src/main.ts --selftest"
   },
