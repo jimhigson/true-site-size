@@ -469,7 +469,7 @@ const main = async () => {
     console.log(`[true-site-size] measuring base (${ref})...`);
     cleanOnce();
     try {
-      // by sha, not FETCH_HEAD: the stored-result lookup since has fetched
+      // by sha, not FETCH_HEAD: the stored-result lookup has since fetched
       // the history branch, which repoints FETCH_HEAD at its tip
       addBaseWorktree(workspace, baseDir, base.sha);
       const built = await buildAndMeasure(baseDir, config);

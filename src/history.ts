@@ -18,8 +18,8 @@ import type {
  * branch never has to be checked out and the workspace is left untouched.
  */
 
-/** private ref the branch is fetched into - leaves FETCH_HEAD alone for the
- *  base-ref code, which reads it straight after its own fetch */
+/** private ref the branch is fetched into, read by name. Any fetch still
+ *  repoints FETCH_HEAD, so code around these calls mustn't rely on it */
 const historyRef = "refs/true-site-size/history";
 
 /** the history file for a comment-key: each key measures its own journey */
