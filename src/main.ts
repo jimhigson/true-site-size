@@ -155,6 +155,7 @@ const main = async () => {
     historyBranch: input("history-branch", ""),
     historyLength: Number(input("history-length", "30")),
     historyReleases: Number(input("history-releases", "6")),
+    storeVersion: input("store-version", "1"),
     releaseTagPattern: input("release-tag-pattern", "^v?\\d+\\.\\d+\\.\\d+$"),
     backfill: input("backfill", ""),
     token: input("github-token", process.env["GITHUB_TOKEN"] ?? ""),
@@ -245,7 +246,14 @@ const main = async () => {
   // a full result stored on the history branch is reused only under this exact
   // key: the measured config, plus what else decides the bytes
   const storeKey = createHash("sha256")
-    .update(JSON.stringify({ configHash, chrome: chromeMajorVersion(), measureVersion }))
+    .update(
+      JSON.stringify({
+        configHash,
+        chrome: chromeMajorVersion(),
+        measureVersion,
+        storeVersion: config.storeVersion,
+      }),
+    )
     .digest("hex")
     .slice(0, 16);
   /** store full results on the history branch, best-effort - a run that can't
@@ -302,10 +310,8 @@ const main = async () => {
    * result is pushed as soon as it's measured, so a run cut short - or several
    * runs sharing a long range - pick up where the last left off. A commit that
    * can't be built (too old for today's toolchain, or from before the app
-   * emitted its marks) is recorded with its error. A commit that failed to
-   * build at all is retried by the next backfill, since a fix to the
-   * toolchain or this action may let it build; one that built but missed
-   * some marks is not.
+   * emitted its marks) is recorded with its error and not tried again -
+   * bump store-version to re-measure after fixing what made it fail.
    */
   const backfill = async () => {
     const commits = backfillCommits(
@@ -316,7 +322,7 @@ const main = async () => {
     );
     const recorded = new Set(
       readHistory(workspace, config.historyBranch, historyFile)
-        .filter((e) => e.configHash === configHash && !e.error)
+        .filter((e) => e.configHash === configHash)
         .map((e) => e.sha),
     );
     const todo = commits.filter((sha) => !recorded.has(sha));
@@ -346,13 +352,12 @@ const main = async () => {
         logBreakdown(`backfill ${sha.slice(0, 9)}`, built.results);
         entry = historyEntry(workspace, sha, configHash, built);
         // stored whole, so a later PR comparing against this commit needn't
-        // build it - only when fully measured, like the base cache
-        if (built.results.every((r) => !r.error)) {
-          results[resultFileFor(sha, storeKey)] = {
-            ...built,
-            measuredAt: new Date().toISOString(),
-          };
-        }
+        // build it - failed rows and all, since under the same key they'd
+        // fail the same way again
+        results[resultFileFor(sha, storeKey)] = {
+          ...built,
+          measuredAt: new Date().toISOString(),
+        };
       } catch (e) {
         console.warn(
           `[true-site-size] backfill: ${sha.slice(0, 9)} could not be measured (recorded as an error): ${(e as Error).message}`,
@@ -360,6 +365,12 @@ const main = async () => {
         entry = historyEntry(workspace, sha, configHash, {
           error: (e as Error).message,
         });
+        results[resultFileFor(sha, storeKey)] = {
+          results: [],
+          disk: null,
+          error: (e as Error).message,
+          measuredAt: new Date().toISOString(),
+        };
       } finally {
         removeBaseWorktree(workspace, baseDir);
       }
@@ -436,6 +447,16 @@ const main = async () => {
       config.historyBranch ?
         readStoredResult(workspace, config.historyBranch, base.sha, storeKey)
       : null;
+    if (stored?.error) {
+      base.error = stored.error;
+      base.results = null;
+      base.disk = null;
+      if (stored.measuredAt) base.measuredAt = stored.measuredAt;
+      console.log(
+        `[true-site-size] base (${ref} @ ${base.sha.slice(0, 9)}) failed when tried ${stored.measuredAt ?? "earlier"} (stored on ${config.historyBranch}) - not trying again: ${stored.error}`,
+      );
+      return base;
+    }
     if (stored) {
       base.results = stored.results;
       base.disk = stored.disk;
@@ -486,7 +507,8 @@ const main = async () => {
         );
         console.log("[true-site-size] base result cached for future runs");
       }
-      if (config.historyBranch && base.results.every((r) => !r.error)) {
+      // stored failed rows and all: under the same key they'd fail again
+      if (config.historyBranch) {
         storeResults([], {
           [resultFileFor(base.sha, storeKey)]: {
             ...built,
@@ -501,6 +523,17 @@ const main = async () => {
       base.error = (e as Error).message;
       base.results = null;
       base.disk = null;
+      // a build that failed is recorded too, so it isn't tried again
+      if (config.historyBranch) {
+        storeResults([], {
+          [resultFileFor(base.sha, storeKey)]: {
+            results: [],
+            disk: null,
+            error: base.error,
+            measuredAt: new Date().toISOString(),
+          },
+        });
+      }
     } finally {
       removeBaseWorktree(workspace, baseDir);
     }
@@ -534,15 +567,13 @@ const main = async () => {
           config.historyBranch,
           historyFile,
           [headEntry],
-          head.every((r) => !r.error) ?
-            {
-              [resultFileFor(headEntry.sha, storeKey)]: {
-                results: head,
-                disk: headDisk,
-                measuredAt: new Date().toISOString(),
-              },
-            }
-          : {},
+          {
+            [resultFileFor(headEntry.sha, storeKey)]: {
+              results: head,
+              disk: headDisk,
+              measuredAt: new Date().toISOString(),
+            },
+          },
         );
         entries = mergeEntries(entries, [headEntry]);
       }

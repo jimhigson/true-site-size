@@ -317,7 +317,7 @@ export const formatComment = (
     .filter((b) => !b.results)
     .map(
       (b) =>
-        `\n> ⚠️ base \`${b.ref}\` could not be measured${b.error ? ` - ${b.error}` : ""}`,
+        `\n> ⚠️ base \`${b.ref}\` could not be measured${b.error ? ` - ${b.error}` : ""}${b.measuredAt ? ` (recorded ${b.measuredAt.slice(0, 16).replace("T", " ")} UTC, not tried again)` : ""}`,
     )
     .join("");
 
@@ -360,7 +360,7 @@ export const formatComment = (
 
   // a base reused from an earlier run says so, and when it was measured -
   // the same commit measured the same way, but not by this run
-  const reused = bases.filter((b) => b.measuredAt);
+  const reused = bases.filter((b) => b.measuredAt && b.results);
   const reusedNote =
     reused.length ?
       `\n<sub>♻️ ${reused

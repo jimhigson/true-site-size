@@ -31803,7 +31803,7 @@ ${entries.join("\n\n")}
 <sub>${formatBytes(totalLowPriority)} was low-priority fetches (ignore-low-priority) and is not counted</sub>` : "");
   const baseErrorNotes = bases.filter((b) => !b.results).map(
     (b) => `
-> \u26A0\uFE0F base \`${b.ref}\` could not be measured${b.error ? ` - ${b.error}` : ""}`
+> \u26A0\uFE0F base \`${b.ref}\` could not be measured${b.error ? ` - ${b.error}` : ""}${b.measuredAt ? ` (recorded ${b.measuredAt.slice(0, 16).replace("T", " ")} UTC, not tried again)` : ""}`
   ).join("");
   const duplicateNotes = head.filter((h) => !h.error).flatMap((h) => {
     const transfers = /* @__PURE__ */ new Map();
@@ -31824,7 +31824,7 @@ ${entries.join("\n\n")}
   const noBaseNote = baseSkippedReason ? `<sub>showing head only - base comparison skipped: ${baseSkippedReason}</sub>` : "<sub>no base ref to compare against - showing head only</sub>";
   const comparedNote = bases.length === 0 ? `
 ${noBaseNote}` : "";
-  const reused = bases.filter((b) => b.measuredAt);
+  const reused = bases.filter((b) => b.measuredAt && b.results);
   const reusedNote = reused.length ? `
 <sub>\u267B\uFE0F ${reused.map(
     (b) => `${b.url ? `[${b.ref}](${b.url})` : `\`${b.ref}\``} measurements based on data previously gathered at ${b.measuredAt.slice(0, 16).replace("T", " ")} UTC`
@@ -33206,6 +33206,7 @@ var main = async () => {
     historyBranch: input("history-branch", ""),
     historyLength: Number(input("history-length", "30")),
     historyReleases: Number(input("history-releases", "6")),
+    storeVersion: input("store-version", "1"),
     releaseTagPattern: input("release-tag-pattern", "^v?\\d+\\.\\d+\\.\\d+$"),
     backfill: input("backfill", ""),
     token: input("github-token", process.env["GITHUB_TOKEN"] ?? "")
@@ -33272,7 +33273,14 @@ var main = async () => {
       measureDisk: config.measureDisk
     })
   ).digest("hex").slice(0, 16);
-  const storeKey = createHash2("sha256").update(JSON.stringify({ configHash, chrome: chromeMajorVersion(), measureVersion })).digest("hex").slice(0, 16);
+  const storeKey = createHash2("sha256").update(
+    JSON.stringify({
+      configHash,
+      chrome: chromeMajorVersion(),
+      measureVersion,
+      storeVersion: config.storeVersion
+    })
+  ).digest("hex").slice(0, 16);
   const storeResults = (added, results) => {
     try {
       appendHistory(workspace, config.historyBranch, historyFile, added, results);
@@ -33303,7 +33311,7 @@ var main = async () => {
       new RegExp(config.releaseTagPattern)
     );
     const recorded = new Set(
-      readHistory(workspace, config.historyBranch, historyFile).filter((e) => e.configHash === configHash && !e.error).map((e) => e.sha)
+      readHistory(workspace, config.historyBranch, historyFile).filter((e) => e.configHash === configHash).map((e) => e.sha)
     );
     const todo = commits.filter((sha) => !recorded.has(sha));
     console.log(
@@ -33330,12 +33338,10 @@ var main = async () => {
         const built = await buildAndMeasure(baseDir, config);
         logBreakdown(`backfill ${sha.slice(0, 9)}`, built.results);
         entry = historyEntry(workspace, sha, configHash, built);
-        if (built.results.every((r) => !r.error)) {
-          results[resultFileFor(sha, storeKey)] = {
-            ...built,
-            measuredAt: (/* @__PURE__ */ new Date()).toISOString()
-          };
-        }
+        results[resultFileFor(sha, storeKey)] = {
+          ...built,
+          measuredAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
       } catch (e) {
         console.warn(
           `[true-site-size] backfill: ${sha.slice(0, 9)} could not be measured (recorded as an error): ${e.message}`
@@ -33343,6 +33349,12 @@ var main = async () => {
         entry = historyEntry(workspace, sha, configHash, {
           error: e.message
         });
+        results[resultFileFor(sha, storeKey)] = {
+          results: [],
+          disk: null,
+          error: e.message,
+          measuredAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
       } finally {
         removeBaseWorktree(workspace, baseDir);
       }
@@ -33389,6 +33401,16 @@ var main = async () => {
     }
     base.url = serverUrl && repo ? `${serverUrl}/${repo}/commit/${base.sha}` : null;
     const stored = config.historyBranch ? readStoredResult(workspace, config.historyBranch, base.sha, storeKey) : null;
+    if (stored?.error) {
+      base.error = stored.error;
+      base.results = null;
+      base.disk = null;
+      if (stored.measuredAt) base.measuredAt = stored.measuredAt;
+      console.log(
+        `[true-site-size] base (${ref} @ ${base.sha.slice(0, 9)}) failed when tried ${stored.measuredAt ?? "earlier"} (stored on ${config.historyBranch}) - not trying again: ${stored.error}`
+      );
+      return base;
+    }
     if (stored) {
       base.results = stored.results;
       base.disk = stored.disk;
@@ -33427,7 +33449,7 @@ var main = async () => {
         );
         console.log("[true-site-size] base result cached for future runs");
       }
-      if (config.historyBranch && base.results.every((r) => !r.error)) {
+      if (config.historyBranch) {
         storeResults([], {
           [resultFileFor(base.sha, storeKey)]: {
             ...built,
@@ -33442,6 +33464,16 @@ var main = async () => {
       base.error = e.message;
       base.results = null;
       base.disk = null;
+      if (config.historyBranch) {
+        storeResults([], {
+          [resultFileFor(base.sha, storeKey)]: {
+            results: [],
+            disk: null,
+            error: base.error,
+            measuredAt: (/* @__PURE__ */ new Date()).toISOString()
+          }
+        });
+      }
     } finally {
       removeBaseWorktree(workspace, baseDir);
     }
@@ -33464,13 +33496,13 @@ var main = async () => {
           config.historyBranch,
           historyFile,
           [headEntry],
-          head.every((r) => !r.error) ? {
+          {
             [resultFileFor(headEntry.sha, storeKey)]: {
               results: head,
               disk: headDisk,
               measuredAt: (/* @__PURE__ */ new Date()).toISOString()
             }
-          } : {}
+          }
         );
         entries = mergeEntries(entries, [headEntry]);
       }

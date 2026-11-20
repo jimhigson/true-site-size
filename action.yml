@@ -183,6 +183,13 @@ inputs:
       regex picking which tags are releases, for the history's
       since-the-last-release and releases charts
     default: "^v?\\d+\\.\\d+\\.\\d+$"
+  store-version:
+    description: >
+      part of the key that measurements stored on history-branch are reused
+      under. Failures are stored too and not tried again, so bump this to
+      re-measure everything - eg after a one-off failure (a network blip
+      during install) was stored, or after fixing a cause outside the config.
+    default: "1"
   backfill:
     description: >
       measure past commits into history-branch instead of the usual
@@ -240,4 +247,5 @@ runs:
         INPUT_HISTORY_RELEASES: ${{ inputs.history-releases }}
         INPUT_RELEASE_TAG_PATTERN: ${{ inputs.release-tag-pattern }}
         INPUT_BACKFILL: ${{ inputs.backfill }}
+        INPUT_STORE_VERSION: ${{ inputs.store-version }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}

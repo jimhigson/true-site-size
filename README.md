@@ -145,7 +145,13 @@ the newest point, and a collapsed table linking each commit and its PR.
   typical PR the default branch's tip and release tags already are, so only the
   PR's head is built. The comment notes each reused base with when it was
   measured (`♻️ v1.4.0 measurements based on data previously gathered at …`).
-  A miss builds the base as before and stores it for next time.
+  A miss builds the base as before and stores it for next time - failures
+  included: rows that missed their marks, or a base that couldn't be built at
+  all (shown as `could not be measured … (recorded …, not tried again)`).
+  Under the same key they'd fail the same way, so they aren't retried. If a
+  failure was a one-off (a network blip during install, say) or you've fixed
+  its cause outside the measured config, bump `store-version` to re-measure
+  everything.
 - **What's plotted:** sizes in kB, one chart each, for whatever the journey
   flags with `"chart": true` - on a `startAgain` step it charts that visit's
   total, on a `row` step that row (eg `{ "startAgain": "game", "chart": true
@@ -205,8 +211,8 @@ It walks the range's first-parent commits (one per merged PR) newest first,
 pushes each result as soon as it's measured and skips commits already recorded,
 so a backfill that runs out of `timeout-ms` (it stops cleanly before starting a
 commit that would overrun) continues where it left off when rerun. A commit
-that can't be built is recorded as a gap and retried by the next backfill; one
-that builds but misses marks it predates keeps its gaps.
+that can't be built, or misses marks it predates, is recorded with its gaps
+and not tried again - bump `store-version` to re-measure after a fix.
 
 ## Journeys: measuring interaction, not just navigation
 
@@ -366,7 +372,8 @@ re-measuring the unchanged base — the log says `base ... loaded from cache`.
 With `history-branch` set they're also stored durably on that branch (see
 History), which takes precedence - the log says `loaded from <branch>`. Either
 way the comment notes the reuse and when the base was measured. Only
-fully-successful base measurements are cached or stored.
+fully-successful base measurements are cached; the branch stores failures too
+(see History).
 
 ## Inputs
 
@@ -399,6 +406,7 @@ fully-successful base measurements are cached or stored.
 | `comment-key` | `""` | maintain separate comments per key |
 | `history-branch` | `""` | orphan branch recording each default-branch commit's sizes, charted in the comment; empty disables |
 | `history-length` | `30` | how many recorded commits the history chart shows |
+| `store-version` | `1` | part of the key stored measurements are reused under - bump it to re-measure everything, eg after a one-off failure was stored |
 | `backfill` | `""` | measure a range (`A..B`) or count (`N`) of past commits into `history-branch` instead of reporting |
 | `github-token` | `${{ github.token }}` | for the comment |
 

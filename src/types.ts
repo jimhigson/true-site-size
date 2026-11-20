@@ -121,6 +121,9 @@ export interface BuiltResult {
   disk: DiskSizes | null;
   /** when it was measured (ISO 8601), on a result stored for reuse */
   measuredAt?: string;
+  /** on a stored result, set when the commit couldn't be built or measured
+   *  at all - recorded so it isn't tried again (results is then empty) */
+  error?: string;
 }
 
 /** a measured base ref column (never throws; errors mark just this column) */
@@ -139,8 +142,9 @@ export interface BaseRef {
   results?: RowResult[] | null;
   /** the base's whole-site disk size, or null */
   disk?: DiskSizes | null;
-  /** set when the measurement was reused from an earlier run rather than
-   *  made by this one: when that run measured it (ISO 8601) */
+  /** set when the measurement - or the failure to make one - was reused
+   *  from an earlier run rather than made by this one: when that run made it
+   *  (ISO 8601) */
   measuredAt?: string;
 }
 
@@ -181,6 +185,8 @@ export interface Config {
   historyReleases: number;
   /** regex picking which tags are releases */
   releaseTagPattern: string;
+  /** part of the stored-result key: bump it to re-measure everything */
+  storeVersion: string;
   /** a commit range (A..B) or count (N) to measure into the history, instead
    *  of a normal head-vs-base run; empty for a normal run */
   backfill: string;
